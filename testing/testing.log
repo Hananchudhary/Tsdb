@@ -127,3 +127,76 @@ Parse error: unknown command type | input: !@#$%^&*
 Parse error: PUT expects 3 arguments: PUT <metric_name> <timestamp> <value> | input: PUT cpu_usage 1000 45.2 extra_token
 Client disconnected
 
+In memory Testing
+
+Input: PUT cpu 100 10 && PUT temp 100 36.5 && PUT cpu 101 11 && PUT temp 101 36.6 && GET cpu 100 102 && GET temp 100 102 && STATS cpu && STATS temp
+
+Server: 
+Inserted Successfully
+Inserted Successfully
+Inserted Successfully
+(100 , 10)
+(101 , 11)
+(100 , 36.5)
+(101 , 36.6)
+metric_name = cpu
+total_points = 2
+in_memory = 2
+on_disk = 0
+disk_chunks = 0
+first_timestamp = 100
+last_timestamp = 101
+metric_name = temp
+total_points = 2
+in_memory = 2
+on_disk = 0
+disk_chunks = 0
+first_timestamp = 100
+last_timestamp = 101
+
+Input: PUT cpu 100 10 && PUT cpu 101 11 && PUT cpu 100 9 && PUT cpu 102 12
+
+Server: 
+Inserted Successfully
+Inserted Successfully
+PUT timestamp must be non-decreasing for the metric
+Inserted Successfully
+
+Input: PUT cpu 100 10 && PUT cpu 100 20 && PUT cpu 100 30 && GET cpu 100 101
+
+Server: 
+Inserted Successfully
+Inserted Successfully
+Inserted Successfully
+(100 , 10)
+(100 , 20)
+(100 , 30)
+
+Input: GET unknown 0 1000 && STATS unknown
+
+Server: 
+No such metric exists
+No such metric exists
+
+Input: PUT cpu 100 abc && PUT cpu 100 NaN && PUT cpu 100 inf && PUT cpu 100 -inf
+
+Server: 
+invalid value format
+Inserted Successfully
+Inserted Successfully
+Inserted Successfully
+
+Input: PUT cpu 100 10 && PUT cpu 200 20 && PUT cpu 150 15 && GET cpu 0 300
+
+Server: 
+Inserted Successfully
+Inserted Successfully
+PUT timestamp must be non-decreasing for the metric
+(100 , 10)
+(200 , 20)
+
+Input: PUT cpu 100 10 && QUIT && PUT cpu 101 11
+
+Server: 
+Inserted Successfully
+

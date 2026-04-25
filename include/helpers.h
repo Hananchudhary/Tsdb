@@ -1,14 +1,12 @@
 #pragma once
-
+#include<iostream>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
-#include <variant>
-#include <vector>
-
+#include<vector>
+#include<variant>
 using namespace std;
 enum class CommandType {
     Put,
@@ -18,17 +16,43 @@ enum class CommandType {
     Flush,
     Quit
 };
+enum class MessageType : char {
+    PUT = '1',
+    GET = '2',
+    AGG = '3',
+    STATS = '4',
+    FLUSH = '5',
+    QUIT = '6',
+    error = '7'
+};
+struct HeadBlock {
+    vector<int64_t> timestamps;
+    vector<double> values;
+    int capacity = 0;
+    HeadBlock(int c=100):capacity{c}{}
+};
 
 struct PutCommand {
     string metric_name;
     int64_t timestamp = 0;
     double value = 0.0;
+    bool handleRequest(HeadBlock& hb) const;
 };
-
+struct StatsResult{
+    string metric_name;
+    int total_points = 0;
+    int in_memory = 0;
+    int on_disk = 0;
+    int disk_chunks = 0;
+    int first_timestamp = 0;
+    int last_timestamp = 0;
+};
 struct GetCommand {
     string metric_name;
     int64_t from_timestamp = 0;
     int64_t to_timestamp = 0;
+    pair<vector<int64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
+
 };
 
 struct AggCommand {
@@ -37,14 +61,18 @@ struct AggCommand {
     int64_t to_timestamp = 0;
     int64_t bucket_seconds = 0;
     string func;
+    pair<vector<int64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
 };
 
 struct StatsCommand {
     string metric_name;
+    StatsResult handleRequest(HeadBlock& hb) const;
+
 };
 
 struct FlushCommand {
     string metric_name;
+    bool handleRequest(HeadBlock& hb) const;
 };
 
 struct QuitCommand {};
@@ -74,30 +102,4 @@ struct ParseResult {
     bool ok() const {
         return command.has_value();
     }
-};
-
-class LineProtocolParser {
-
-    ParseResult parse_single_command(string_view line);
-
-    static bool is_valid_metric_name(string_view metric_name);
-    static vector<string_view> tokenize(string_view line);
-    static vector<string_view> split_queries(string_view line);
-    static bool parse_int64(string_view token, int64_t& value);
-    static bool parse_int(string_view token, int& value);
-    static bool parse_double(string_view token, double& value);
-    static string trim_carriage_return(string_view line);
-    static string_view trim_whitespace(string_view line);
-
-    string buffer_;
-    unordered_map<string, int64_t> last_put_timestamp_;
-    size_t max_buffered_bytes_;
-
-    public:
-    vector<ParseResult> parse_line(string_view line);
-
-    bool has_pending_data() const;
-    size_t pending_bytes() const;
-    LineProtocolParser() = default;
-
 };

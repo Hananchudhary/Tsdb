@@ -46,6 +46,13 @@ bool is_correct_func(string_view comm) {
 
     return false;
 }
+void convert_lower(string& str){
+    for(int i = 0;str[i]!='\0';i++){
+        if(str[i] >='A' && str[i]<='Z'){
+            str[i] = tolower(str[i]);
+        }
+    }
+}
 bool isEqual(const char* command, string_view comm) {
     size_t len = strlen(command);
     if (len != comm.size()) return false;
@@ -112,11 +119,6 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         }
 
         const string metric_name(tokens[1]);
-        auto it = last_put_timestamp_.find(metric_name);
-        if (it != last_put_timestamp_.end() && timestamp < it->second) {
-            return make_error("PUT timestamp must be non-decreasing for the metric", line);
-        }
-        last_put_timestamp_[metric_name] = timestamp;
 
         ParseResult result;
         result.command = Command{
@@ -351,4 +353,96 @@ string_view LineProtocolParser::trim_whitespace(string_view line) {
     }
 
     return line.substr(start, end - start);
+}
+bool PutCommand::handleRequest(HeadBlock& hb) const{
+    if(hb.timestamps.size() == hb.capacity) return false;
+    if(!hb.timestamps.empty() && hb.timestamps[hb.timestamps.size()-1] > this->timestamp) return false;
+    hb.timestamps.push_back(this->timestamp);
+    hb.values.push_back(this->value);
+    return true;
+}
+pair<vector<int64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
+    int size = hb.timestamps.size(), i = 9;
+    pair<vector<int64_t>, vector<double>> res;
+    for(int i = 0;i<size;i++){
+        if(hb.timestamps[i] > this->to_timestamp) break;
+        if(hb.timestamps[i] >= from_timestamp){
+            res.first.push_back(hb.timestamps[i]);
+            res.second.push_back(hb.values[i]);
+        }
+    }
+    return res;
+}
+double mini(const vector<double>& arr){
+    double min = INT_FAST32_MAX;
+    for(const double a : arr){
+        if(a < min) min = a;
+    }
+    return min;
+}
+double mixi(const vector<double>& arr){
+    double max = INT_FAST32_MIN;
+    for(const double a : arr){
+        if(a > max) max = a;
+    }
+    return max;
+}
+double sum(const vector<double>& arr){
+    double sum = 0;
+    for(const double a : arr){
+        sum = sum + a;
+    }
+    return sum;
+}
+pair<vector<int64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
+    pair<vector<int64_t>, vector<double>> res;
+    int size = hb.timestamps.size(), i = 0;
+    for(int i = 0;i<size;i++){
+        if(hb.timestamps[i] > this->to_timestamp) break;
+        if(hb.timestamps[i] >= this->from_timestamp){
+            int last = hb.timestamps[i] + bucket_seconds;
+            pair<vector<int64_t>, vector<double>> res1;
+            while(hb.timestamps[i] > last && i < size){
+                res1.first.push_back(hb.timestamps[i]);
+                res1.second.push_back(hb.values[i]);
+                i++;
+            }
+            if(res1.first.empty()) continue;
+            if(this->func == "sum"){
+                res.first.push_back(res1.first[0]);
+                res.second.push_back(sum(res1.second));
+            }
+            if(this->func == "avg"){
+                res.first.push_back(res1.first[0]);
+                res.second.push_back((sum(res1.second) / res.first.size()));
+            }
+            if(this->func == "min"){
+                res.first.push_back(res1.first[0]);
+                res.second.push_back(mini(res1.second));
+            }
+            if(this->func == "max"){
+                res.first.push_back(res1.first[0]);
+                res.second.push_back(mixi(res1.second));
+            }
+            if(this->func == "count"){
+                res.first.push_back(res1.first[0]);
+                res.second.push_back(res1.first.size());
+            }
+        }
+    }
+    return res;
+}
+StatsResult StatsCommand::handleRequest(HeadBlock& hb) const{
+    StatsResult res;
+    res.first_timestamp = hb.timestamps[0];
+    res.last_timestamp = hb.timestamps[hb.timestamps.size() - 1];
+    res.in_memory = hb.timestamps.size();
+    res.metric_name = this->metric_name;
+    res.total_points = res.on_disk + res.in_memory;
+    return res;
+}
+bool FlushCommand::handleRequest(HeadBlock& hb) const{
+    hb.timestamps.clear();
+    hb.values.clear();
+    return true;
 }
