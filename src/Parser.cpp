@@ -1,5 +1,6 @@
 #include "Parser.h"
-
+#include <fstream>
+#include <filesystem>
 #include <charconv>
 #include <cstdlib>
 #include <iostream>
@@ -354,11 +355,31 @@ string_view LineProtocolParser::trim_whitespace(string_view line) {
 
     return line.substr(start, end - start);
 }
-bool PutCommand::handleRequest(HeadBlock& hb) const{
-    if(hb.timestamps.size() == hb.capacity) return false;
-    if(!hb.timestamps.empty() && hb.timestamps[hb.timestamps.size()-1] > this->timestamp) return false;
+bool PutCommand::handleRequest(HeadBlock& hb) const {
+    if (hb.timestamps.size() == hb.capacity) return false;
+    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp) return false;
+
     hb.timestamps.push_back(this->timestamp);
     hb.values.push_back(this->value);
+
+    string dirPath = "./data/" + this->metric_name;
+    string filePath = dirPath + "/wal.log";
+
+    filesystem::create_directories(dirPath);
+
+    bool fileExists = filesystem::exists(filePath);
+
+    ofstream file;
+
+    if (!fileExists) {
+        file.open(filePath, ios::out);
+        file << this->timestamp << "," << this->value;
+    } else {
+        file.open(filePath, ios::app);
+        file << "\n" << this->timestamp << "," << this->value;
+    }
+
+    file.close();
     return true;
 }
 pair<vector<int64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{

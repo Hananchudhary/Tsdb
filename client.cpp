@@ -94,6 +94,7 @@ void show_stats_result(string& str){
     
         std::string key = token.substr(0, pos);
         std::string value = token.substr(pos + 1);
+        char* parse_end = nullptr;
         cout << key << " = ";
         if (key == "metric_name") {
             cout << value;
@@ -111,10 +112,10 @@ void show_stats_result(string& str){
             cout << stoi(value);
         }
         else if (key == "first_timestamp") {
-            cout << stoll(value);
+            cout << strtod(value.c_str(), &parse_end);
         }
         else if (key == "last_timestamp") {
-            cout << stoll(value);
+            cout << strtod(value.c_str(), &parse_end);
         }
         cout << endl;
     }
@@ -173,7 +174,7 @@ int main() {
         return 1;
     }
 
-    string msg = "PUT cpu 1 10 && PUT temp 1 36.5 && PUT cpu 2 20 && GET cpu 0 10 && PUT cpu 1 5 && STATS cpu && GET temp 0 10 && INVALID && PUT temp 2 36.6 && GET temp 0 10 && QUIT";
+    string msg = "GET cpu 100 100";
 
     if (!send_with_size(fd, msg.data(), msg.size())) {
         cerr << "send failed\n";

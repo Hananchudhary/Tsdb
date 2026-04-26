@@ -7,6 +7,8 @@
 #include<sstream>
 #include <iostream>
 #include <string>
+#include<fstream>
+#include<filesystem>
 #include <thread>
 #include <unistd.h>
 #include <semaphore>
@@ -14,10 +16,63 @@
 #include"./include/config.h"
 #include<unordered_map>
 using namespace std;
+namespace fs = filesystem;
+counting_semaphore<kMaxThreads> thread_limit(kMaxThreads);
+
 unordered_map<string, HeadBlock> metric_registery;
 
-std::counting_semaphore<kMaxThreads> thread_limit(kMaxThreads);
+bool initialize() {
+    try {
+        string basePath = "./data/";
 
+        if (!fs::exists(basePath)) return true; // nothing to load
+
+        for (const auto& entry : fs::directory_iterator(basePath)) {
+            if (!entry.is_directory()) continue;
+
+            string metric_name = entry.path().filename().string();
+            string walPath = entry.path().string() + "/wal.log";
+
+            HeadBlock hb;
+
+            if (fs::exists(walPath)) {
+                ifstream file(walPath);
+                string line;
+
+                while (getline(file, line)) {
+                    if (line.empty()) continue;
+
+                    stringstream ss(line);
+                    string ts_str, val_str;
+
+                    if (!getline(ss, ts_str, ',')) continue;
+                    if (!getline(ss, val_str, ',')) continue;
+
+                    try {
+                        int64_t ts = stoi(ts_str);
+                        char* parse_end = nullptr;
+                        double val = strtod(val_str.c_str(), &parse_end);
+
+                        if (hb.timestamps.size() < hb.capacity) {
+                            hb.timestamps.push_back(ts);
+                            hb.values.push_back(val);
+                        }
+                    } catch (...) {
+                        continue;
+                    }
+                }
+            }
+
+            metric_registery[metric_name] = move(hb);
+        }
+        cout << "System initialized\n";
+        return true;
+    }
+    catch (const exception& e) {
+        cout << "Initialization failed: " << e.what() << "\n";
+        return false;
+    }
+}
 string serialize(const vector<int64_t>& ts, const vector<double>& values)
 {
     string buffer{};
@@ -39,12 +94,12 @@ string serializeStats(const StatsResult& s) {
     
     return
         "metric_name=" + s.metric_name +
-        " total_points=" + std::to_string(s.total_points) +
-        " in_memory=" + std::to_string(s.in_memory) +
-        " on_disk=" + std::to_string(s.on_disk) +
-        " disk_chunks=" + std::to_string(s.disk_chunks) +
-        " first_timestamp=" + std::to_string(s.first_timestamp) +
-        " last_timestamp=" + std::to_string(s.last_timestamp);
+        " total_points=" + to_string(s.total_points) +
+        " in_memory=" + to_string(s.in_memory) +
+        " on_disk=" + to_string(s.on_disk) +
+        " disk_chunks=" + to_string(s.disk_chunks) +
+        " first_timestamp=" + to_string(s.first_timestamp) +
+        " last_timestamp=" + to_string(s.last_timestamp);
 }
 string get_result(const CommandData& command) {
     string res{};
@@ -155,7 +210,7 @@ bool send_with_size(int socket_fd, const void* data, uint32_t length) {
     return send_all(socket_fd, data, length);
 }
 
-bool recv_with_size(int socket_fd, std::string& out) {
+bool recv_with_size(int socket_fd, string& out) {
     uint32_t net_length = 0;
 
     if (recv_all(socket_fd, &net_length, sizeof(net_length)) <= 0)
@@ -252,7 +307,9 @@ int main() {
     }
 
     cout << "Server running...\n";
-
+    if(!initialize()){
+        return 1;
+    }
     while (true) {
         sockaddr_in client_addr{};
         socklen_t len = sizeof(client_addr);
