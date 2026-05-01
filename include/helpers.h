@@ -36,7 +36,7 @@ struct PutCommand {
     string metric_name;
     int64_t timestamp = 0;
     double value = 0.0;
-    bool handleRequest(HeadBlock& hb) const;
+    int handleRequest(HeadBlock& hb) const;
 };
 struct StatsResult{
     string metric_name;

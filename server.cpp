@@ -25,46 +25,42 @@ bool initialize() {
     try {
         string basePath = "./data/";
 
-        if (!fs::exists(basePath)) return true; // nothing to load
+        if (!fs::exists(basePath)) return true;
 
         for (const auto& entry : fs::directory_iterator(basePath)) {
             if (!entry.is_directory()) continue;
 
             string metric_name = entry.path().filename().string();
-            string walPath = entry.path().string() + "/wal.log";
+            string walPath = entry.path().string() + "/wal.bin";
 
             HeadBlock hb;
 
             if (fs::exists(walPath)) {
-                ifstream file(walPath);
-                string line;
+                ifstream file(walPath, ios::binary);
 
-                while (getline(file, line)) {
-                    if (line.empty()) continue;
+                if (!file.is_open()) continue;
 
-                    stringstream ss(line);
-                    string ts_str, val_str;
+                while (true) {
+                    int64_t ts;
+                    double val;
 
-                    if (!getline(ss, ts_str, ',')) continue;
-                    if (!getline(ss, val_str, ',')) continue;
+                    file.read(reinterpret_cast<char*>(&ts), sizeof(ts));
+                    if (file.gcount() != sizeof(ts)) break;
 
-                    try {
-                        int64_t ts = stoi(ts_str);
-                        char* parse_end = nullptr;
-                        double val = strtod(val_str.c_str(), &parse_end);
+                    file.read(reinterpret_cast<char*>(&val), sizeof(val));
+                    if (file.gcount() != sizeof(val)) break;
 
-                        if (hb.timestamps.size() < hb.capacity) {
-                            hb.timestamps.push_back(ts);
-                            hb.values.push_back(val);
-                        }
-                    } catch (...) {
-                        continue;
+                    if (hb.timestamps.size() < hb.capacity) {
+                        hb.timestamps.push_back(ts);
+                        hb.values.push_back(val);
                     }
                 }
-            }
 
+                file.close();
+            }
             metric_registery[metric_name] = move(hb);
         }
+
         cout << "System initialized\n";
         return true;
     }
@@ -78,9 +74,12 @@ string serialize(const vector<int64_t>& ts, const vector<double>& values)
     string buffer{};
 
     uint32_t n = ts.size();
-    buffer.resize(n * (sizeof(int64_t) +  sizeof(double)) + 1);
-    memset(buffer.data(),0,n * (sizeof(int64_t) +  sizeof(double)) + 1);
+    buffer.resize(n * (sizeof(int64_t) +  sizeof(double)) + 1 + sizeof(int64_t));
+    memset(buffer.data(),0,n * (sizeof(int64_t) +  sizeof(double)) + 1 +sizeof(int64_t));
     uint32_t offset = 0;
+    int64_t s = ts.size();
+    memcpy(buffer.data() + offset, &s, sizeof(int64_t));
+    offset += sizeof(int64_t);
     for (uint32_t i = 0; i < n;i++) {
         memcpy(buffer.data() + offset, &ts[i], sizeof(int64_t));
         offset += sizeof(int64_t);
@@ -109,15 +108,27 @@ string get_result(const CommandData& command) {
             metric_registery[put.metric_name] = HeadBlock{};
         }
         HeadBlock& hb = metric_registery[put.metric_name];
-        bool res = put.handleRequest(hb);
+        int res = put.handleRequest(hb);
         string response(1, static_cast<char>(MessageType::PUT));
-        return res ? response + "Inserted Successfully" : response + "Timestamp must be in non-decreasing";
+        if(res == -1){
+            response = response + "Not enough memory, Flush First.";   
+        }
+        else if (res == -2){
+            response = response + "Timestamp must be in non-decreasing.";   
+        }
+        else if(res == -3){
+            cout << "Data could not write to log\n";
+        }
+        else{
+            response = response + "Inserted Successfully.";
+        }
+        return response;
     }
     if (holds_alternative<GetCommand>(command)) {
         const GetCommand& gets = get<GetCommand>(command);
         string response(1, static_cast<char>(MessageType::GET));
         if(metric_registery.count(gets.metric_name) == 0){
-            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists";
+            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists.";
         }
         HeadBlock& hb = metric_registery[gets.metric_name];
         pair<vector<int64_t>, vector<double>> res = gets.handleRequest(hb);
@@ -126,7 +137,7 @@ string get_result(const CommandData& command) {
     if (holds_alternative<AggCommand>(command)) {
         const AggCommand& agg = get<AggCommand>(command);
         if(metric_registery.count(agg.metric_name) == 0){
-            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists";
+            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists.";
         }
         string response(1, static_cast<char>(MessageType::AGG));
         HeadBlock& hb = metric_registery[agg.metric_name];
@@ -138,7 +149,7 @@ string get_result(const CommandData& command) {
         string response(1, static_cast<char>(MessageType::STATS));
 
         if(metric_registery.count(stats.metric_name) == 0){
-            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists";
+            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists.";
         }
         HeadBlock& hb = metric_registery[stats.metric_name];
         StatsResult res = stats.handleRequest(hb);
@@ -149,13 +160,13 @@ string get_result(const CommandData& command) {
         string response(1, static_cast<char>(MessageType::FLUSH));
         
         if(metric_registery.count(flush.metric_name) == 0){
-            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists";
+            return string(1, static_cast<char>(MessageType::error)) + "No such metric exists.";
         }
         HeadBlock& hb = metric_registery[flush.metric_name];
         bool res = flush.handleRequest(hb);
-        return res ? response + "Flushed Successfully" : response + "Unknown error occured";
+        return res ? response + "Flushed Successfully." : response + "Unknown error occured.";
     }
-    return "";
+    return ".";
 }
 ssize_t recv_all(int socket_fd, void* data, size_t length) {
     char* buffer = static_cast<char*>(data);

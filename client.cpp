@@ -59,7 +59,7 @@ bool send_with_size(int socket_fd, const void* data, uint32_t length) {
     return send_all(socket_fd, data, length);
 }
 
-bool recv_with_size(int socket_fd, std::string& out) {
+bool recv_with_size(int socket_fd, string& out) {
     uint32_t net = 0;
 
     if (recv_all(socket_fd, &net, sizeof(net)) <= 0)
@@ -70,86 +70,76 @@ bool recv_with_size(int socket_fd, std::string& out) {
 
     return recv_all(socket_fd, out.data(), len) > 0;
 }
-void show_pair_result(string& response){
-    uint32_t offset = 0;
-    int64_t value;
-    while(response[offset] != '\0'){
+void show_pair_result(string& response, int& i){
+    int64_t size;
+    memcpy(&size, response.data() + i, sizeof(int64_t));
+    i += sizeof(int64_t);
+    for(int64_t j = 0;j < size && i < response.size();j++){
         int64_t value;
-        memcpy(&value, response.data() + offset, sizeof(int64_t));
-        offset += sizeof(int64_t);
+        memcpy(&value, response.data() + i, sizeof(int64_t));
+        i += sizeof(int64_t);
         double val;
-        memcpy(&val, response.data() + offset, sizeof(double));
-        offset += sizeof(int64_t);
+        memcpy(&val, response.data() + i, sizeof(double));
+        i += sizeof(double);
         cout << "(" << value << " , " << val << ")\n";
     }
 }
-void show_stats_result(string& str){
-    
-    std::istringstream iss(str);
-    std::string token;
+string deserialize(const string& str, int& i, const char del){
+    size_t pos = str.find(del, i);
 
-    while (iss >> token) {
-        size_t pos = token.find('=');
-        if (pos == std::string::npos) continue;
-    
-        std::string key = token.substr(0, pos);
-        std::string value = token.substr(pos + 1);
-        char* parse_end = nullptr;
-        cout << key << " = ";
-        if (key == "metric_name") {
-            cout << value;
-        }
-        else if (key == "total_points") {
-            cout << stoi(value);
-        }
-        else if (key == "in_memory") {
-            cout << stoi(value);
-        }
-        else if (key == "on_disk") {
-            cout << stoi(value);
-        }
-        else if (key == "disk_chunks") {
-            cout << stoi(value);
-        }
-        else if (key == "first_timestamp") {
-            cout << strtod(value.c_str(), &parse_end);
-        }
-        else if (key == "last_timestamp") {
-            cout << strtod(value.c_str(), &parse_end);
-        }
-        cout << endl;
+    if(pos == string::npos){
+        cout << "Error in deserialization.\n";
+        return "";
     }
 
+    string result = str.substr(i, pos - i);
+    i = pos + 1;
+    return result;
+}
+void show_stats_result(const string& str, int& i){
+    cout << deserialize(str, i, '=');
+    cout << deserialize(str, i, ' ') << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
+    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << deserialize(str, i, '=');
 }
 
-void show_result(std::string& response) {
-    std::istringstream iss(response);
-    std::string line;
-
-    while (std::getline(iss, line, '&')) {
-        if (line.empty()) continue;
-        char type = line[0];
-        string res = line.substr(1);
+void show_result(string& response) {
+    int i = 0;
+    
+    while (i < response.size()) {
+        char type = response[i++];
         if (type == static_cast<char>(MessageType::PUT)) {
-            cout << res << endl;
+            cout << deserialize(response, i, '.') << endl;
         }
         else if (type == static_cast<char>(MessageType::GET)) { 
-            show_pair_result(res);
+            show_pair_result(response, i);
         }
         else if (type == static_cast<char>(MessageType::AGG)) {
-            show_pair_result(res);
+            show_pair_result(response, i);
         }
         else if (type == static_cast<char>(MessageType::FLUSH)) {
-            cout << res << endl;
+            cout << deserialize(response, i, '.') << endl;
+
         }
         else if (type == static_cast<char>(MessageType::QUIT)) {
-            cout << res << endl;
+            cout << deserialize(response, i, '.') << endl;
         }
         else if (type == static_cast<char>(MessageType::STATS)) {
-            show_stats_result(res);
+            show_stats_result(response, i);
         }
         else if(type == static_cast<char>(MessageType::error)){
-            cout << res << endl;
+            cout << deserialize(response, i, '.') << endl;
         }
     }
 }
@@ -174,7 +164,7 @@ int main() {
         return 1;
     }
 
-    string msg = "GET cpu 100 100";
+    string msg = "PUT cpu 100 10 && PUT cpu 101 11 && GET cpu 100 102";
 
     if (!send_with_size(fd, msg.data(), msg.size())) {
         cerr << "send failed\n";

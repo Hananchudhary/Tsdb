@@ -355,32 +355,28 @@ string_view LineProtocolParser::trim_whitespace(string_view line) {
 
     return line.substr(start, end - start);
 }
-bool PutCommand::handleRequest(HeadBlock& hb) const {
-    if (hb.timestamps.size() == hb.capacity) return false;
-    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp) return false;
+int PutCommand::handleRequest(HeadBlock& hb) const {
+    if (hb.timestamps.size() == hb.capacity) return -1;
+    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp)
+        return -2;
 
     hb.timestamps.push_back(this->timestamp);
     hb.values.push_back(this->value);
 
     string dirPath = "./data/" + this->metric_name;
-    string filePath = dirPath + "/wal.log";
+    string filePath = dirPath + "/wal.bin";
 
     filesystem::create_directories(dirPath);
 
-    bool fileExists = filesystem::exists(filePath);
+    ofstream file(filePath, ios::binary | ios::app);
+    if (!file.is_open()) return -3;
 
-    ofstream file;
-
-    if (!fileExists) {
-        file.open(filePath, ios::out);
-        file << this->timestamp << "," << this->value;
-    } else {
-        file.open(filePath, ios::app);
-        file << "\n" << this->timestamp << "," << this->value;
-    }
+    file.write(reinterpret_cast<const char*>(&this->timestamp), sizeof(this->timestamp));
+    file.write(reinterpret_cast<const char*>(&this->value), sizeof(this->value));
 
     file.close();
-    return true;
+
+    return 0;
 }
 pair<vector<int64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
     int size = hb.timestamps.size(), i = 9;
