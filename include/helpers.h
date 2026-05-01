@@ -103,3 +103,14 @@ struct ParseResult {
         return command.has_value();
     }
 };
+struct BitWriter {
+    vector<uint8_t> buffer;
+    uint8_t current_byte = 0;
+    int bits_filled = 0;
+};
+struct BitReader {
+    vector<uint8_t> buffer;
+    int byte_index = 0;
+    int bit_index = 0;
+    BitReader(const vector<uint8_t>& b, int bi = 0): buffer{b}, byte_index{bi}{}
+};

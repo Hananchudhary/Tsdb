@@ -6,10 +6,12 @@
 #include <string>
 #include <vector>
 #include <unistd.h>
+#include <bits/stdc++.h>
 #include <sys/socket.h>
 
 #include "./include/helpers.h"
 #include "server_config.h"
+#include"./src/compression.h"
 
 using namespace std;
 
@@ -181,7 +183,78 @@ int connect_to_server() {
     return fd;
 }
 
-int main() {
+void print_buffer(const vector<uint8_t>& buf, uint32_t cur) {
+    for (auto b : buf) {
+        for (int i = 7; i >= 0; i--) {
+            cout << ((b >> i) & 1);
+        }
+        cout << " ";
+    }
+    for (int i = 7; i >= 0; i--) {
+        cout << ((cur >> i) & 1);
+    }
+    cout << " ";
+    cout << endl;
+}
+
+void test_1000_random_roundtrip() {
+    cout << "=== 1000 VALUE BITSTREAM ROUNDTRIP TEST ===\n";
+
+    BitWriter bw;
+
+    vector<pair<uint64_t, int>> inputs;
+    long long total_bits = 0;
+
+    for (int i = 0; i < 1000; i++) {
+        int bits = 1 + (rand() % 64);
+
+        uint64_t value =
+            ((uint64_t)rand() << 48) ^
+            ((uint64_t)rand() << 32) ^
+            ((uint64_t)rand() << 16) ^
+            (uint64_t)rand();
+
+        inputs.push_back({value, bits});
+
+        bw_write(&bw, value, bits);
+        total_bits += bits;
+    }
+    uint64_t val = 0;
+    int bits = total_bits % 8;
+    bw_write(&bw, val, bits);
+    inputs.push_back({val, bits});
+    total_bits += bits;
+
+    if (bw.bits_filled != 0) {
+        bw.buffer.push_back(bw.current_byte);
+    }
+
+
+    cout << "Total bits written: " << total_bits << "\n";
+    cout << "Total bytes: " << bw.buffer.size() << "\n";
+
+    BitReader br(bw.buffer);
+
+    for (int i = 0; i < 1000; i++) {
+        uint64_t expected = inputs[i].first;
+        int bits = inputs[i].second;
+
+        uint64_t got = br_read(&br, bits);
+
+        uint64_t mask = (bits == 64) ? ~0ULL : ((1ULL << bits) - 1);
+
+        if ((got & mask) != (expected & mask)) {
+            cout << "❌ MISMATCH at index " << i << "\n";
+            cout << "Expected: " << (expected & mask)
+                 << " Got: " << (got & mask) << "\n";
+            exit(1);
+        }
+    }
+
+    cout << "✔ ALL 1000 VALUES MATCH\n";
+}
+
+int main1() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage && FLUSH cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",
