@@ -11,6 +11,9 @@ using namespace std;
 
 ParseResult make_error(string message, string_view line) {
     ParseResult result;
+    if(message[message.size()-1] != '.'){
+        message += '.';
+    }
     result.error = ParseError{move(message), string(line)};
     return result;
 }
@@ -74,7 +77,7 @@ vector<ParseResult> LineProtocolParser::parse_line(string_view raw_line) {
     vector<ParseResult> results;
 
     if (queries.empty()) {
-        results.push_back(make_error("empty command", line));
+        results.push_back(make_error("empty command.", line));
         return results;
     }
 
@@ -82,7 +85,7 @@ vector<ParseResult> LineProtocolParser::parse_line(string_view raw_line) {
     for (string_view query : queries) {
         const string_view trimmed_query = trim_whitespace(query);
         if (trimmed_query.empty()) {
-            results.push_back(make_error("empty command between && separators", line));
+            results.push_back(make_error("empty command between && separators.", line));
             continue;
         }
         results.push_back(parse_single_command(trimmed_query));
@@ -96,27 +99,27 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
     vector<string_view> tokens = tokenize(line);
 
     if (tokens.empty()) {
-        return make_error("empty command", line);
+        return make_error("empty command.", line);
     }
 
     const string_view command = tokens[0];
 
     if (isEqual("PUT", command)) {
         if (tokens.size() != 4) {
-            return make_error("PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>", line);
+            return make_error("PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.", line);
         }
 
         if (!is_valid_metric_name(tokens[1])) {
-            return make_error("invalid metric name", line);
+            return make_error("invalid metric name.", line);
         }
 
-        int64_t timestamp = 0;
+        uint64_t timestamp = 0;
         double value = 0.0;
         if (!parse_int64(tokens[2], timestamp)) {
-            return make_error("invalid timestamp format", line);
+            return make_error("invalid timestamp format.", line);
         }
         if (!parse_double(tokens[3], value)) {
-            return make_error("invalid value format", line);
+            return make_error("invalid value format.", line);
         }
 
         const string metric_name(tokens[1]);
@@ -131,20 +134,20 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
 
     if (isEqual("GET", command)) {
         if (tokens.size() != 4) {
-            return make_error("GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>", line);
+            return make_error("GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.", line);
         }
 
         if (!is_valid_metric_name(tokens[1])) {
-            return make_error("invalid metric name", line);
+            return make_error("invalid metric name.", line);
         }
 
-        int64_t from_timestamp = 0;
-        int64_t to_timestamp = 0;
+        uint64_t from_timestamp = 0;
+        uint64_t to_timestamp = 0;
         if (!parse_int64(tokens[2], from_timestamp) || !parse_int64(tokens[3], to_timestamp)) {
-            return make_error("invalid timestamp format", line);
+            return make_error("invalid timestamp format.", line);
         }
         if (from_timestamp > to_timestamp) {
-            return make_error("GET requires from_timestamp <= to_timestamp", line);
+            return make_error("GET requires from_timestamp <= to_timestamp.", line);
         }
 
         ParseResult result;
@@ -157,30 +160,30 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
 
     if (isEqual("AGG", command)) {
         if (tokens.size() != 6) {
-            return make_error("AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>", line);
+            return make_error("AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.", line);
         }
 
         if (!is_valid_metric_name(tokens[1])) {
-            return make_error("invalid metric name", line);
+            return make_error("invalid metric name.", line);
         }
 
-        int64_t from_timestamp = 0;
-        int64_t to_timestamp = 0;
-        int64_t bucket_seconds = 0;
+        uint64_t from_timestamp = 0;
+        uint64_t to_timestamp = 0;
+        uint64_t bucket_seconds = 0;
         if (!parse_int64(tokens[2], from_timestamp) || !parse_int64(tokens[3], to_timestamp)) {
-            return make_error("invalid timestamp format", line);
+            return make_error("invalid timestamp format.", line);
         }
         if (!parse_int64(tokens[4], bucket_seconds)) {
-            return make_error("invalid bucket_seconds format", line);
+            return make_error("invalid bucket_seconds format.", line);
         }
         if (from_timestamp > to_timestamp) {
-            return make_error("AGG requires from <= to", line);
+            return make_error("AGG requires from <= to.", line);
         }
         if (bucket_seconds <= 0) {
-            return make_error("bucket_seconds must be positive", line);
+            return make_error("bucket_seconds must be positive.", line);
         }
         if(!is_correct_func(tokens[5])){
-            return make_error("not a valid function", line);
+            return make_error("not a valid function.", line);
         }
         ParseResult result;
         result.command = Command{
@@ -198,11 +201,11 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
 
     if (isEqual("STATS", command)) {
         if (tokens.size() != 2) {
-            return make_error("STATS expects 1 argument: STATS <metric_name>", line);
+            return make_error("STATS expects 1 argument: STATS <metric_name>.", line);
         }
 
         if (!is_valid_metric_name(tokens[1])) {
-            return make_error("invalid metric name", line);
+            return make_error("invalid metric name.", line);
         }
 
         ParseResult result;
@@ -215,11 +218,11 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
 
     if (isEqual("FLUSH", command)) {
         if (tokens.size() != 2) {
-            return make_error("FLUSH expects 1 argument: FLUSH <metric_name>", line);
+            return make_error("FLUSH expects 1 argument: FLUSH <metric_name>.", line);
         }
 
         if (!is_valid_metric_name(tokens[1])) {
-            return make_error("invalid metric name", line);
+            return make_error("invalid metric name.", line);
         }
 
         ParseResult result;
@@ -232,7 +235,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
 
     if (isEqual("QUIT", command)) {
         if (tokens.size() != 1) {
-            return make_error("QUIT expects no arguments", line);
+            return make_error("QUIT expects no arguments.", line);
         }
 
         ParseResult result;
@@ -243,7 +246,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    return make_error("unknown command type", line);
+    return make_error("unknown command type.", line);
 }
 
 bool LineProtocolParser::is_valid_metric_name(string_view metric_name) {
@@ -304,7 +307,7 @@ vector<string_view> LineProtocolParser::split_queries(string_view line) {
     return queries;
 }
 
-bool LineProtocolParser::parse_int64(string_view token, int64_t& value) {
+bool LineProtocolParser::parse_int64(string_view token, uint64_t& value) {
     if (token.empty()) {
         return false;
     }
@@ -362,7 +365,6 @@ int PutCommand::handleRequest(HeadBlock& hb) const {
 
     hb.timestamps.push_back(this->timestamp);
     hb.values.push_back(this->value);
-
     string dirPath = "./data/" + this->metric_name;
     string filePath = dirPath + "/wal.bin";
 
@@ -378,9 +380,9 @@ int PutCommand::handleRequest(HeadBlock& hb) const {
 
     return 0;
 }
-pair<vector<int64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
+pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
     int size = hb.timestamps.size(), i = 9;
-    pair<vector<int64_t>, vector<double>> res;
+    pair<vector<uint64_t>, vector<double>> res;
     for(int i = 0;i<size;i++){
         if(hb.timestamps[i] > this->to_timestamp) break;
         if(hb.timestamps[i] >= from_timestamp){
@@ -411,14 +413,14 @@ double sum(const vector<double>& arr){
     }
     return sum;
 }
-pair<vector<int64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
-    pair<vector<int64_t>, vector<double>> res;
+pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
+    pair<vector<uint64_t>, vector<double>> res;
     int size = hb.timestamps.size(), i = 0;
     for(int i = 0;i<size;i++){
         if(hb.timestamps[i] > this->to_timestamp) break;
         if(hb.timestamps[i] >= this->from_timestamp){
             int last = hb.timestamps[i] + bucket_seconds;
-            pair<vector<int64_t>, vector<double>> res1;
+            pair<vector<uint64_t>, vector<double>> res1;
             while(hb.timestamps[i] > last && i < size){
                 res1.first.push_back(hb.timestamps[i]);
                 res1.second.push_back(hb.values[i]);

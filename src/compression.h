@@ -39,3 +39,11 @@ uint64_t br_read (BitReader* br , int n_bits){
     }
     return res;
 }
+void timestamp_encode(BitWriter* bw, const vector<uint64_t>& timestamps){
+    int size = timestamps.size();
+    for(int i = 0;i<size;i++){
+        if(i == 0){
+            bw_write(bw, timestamps[i], 64);
+        }
+    }
+}

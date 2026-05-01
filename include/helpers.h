@@ -7,6 +7,7 @@
 #include <string_view>
 #include<vector>
 #include<variant>
+#include"./config.h"
 using namespace std;
 enum class CommandType {
     Put,
@@ -26,15 +27,14 @@ enum class MessageType : char {
     error = '7'
 };
 struct HeadBlock {
-    vector<int64_t> timestamps;
+    vector<uint64_t> timestamps = vector<uint64_t>(0, memory_buffer);
     vector<double> values;
-    int capacity = 0;
-    HeadBlock(int c=100):capacity{c}{}
+    int capacity = memory_buffer;
 };
 
 struct PutCommand {
     string metric_name;
-    int64_t timestamp = 0;
+    uint64_t timestamp = 0;
     double value = 0.0;
     int handleRequest(HeadBlock& hb) const;
 };
@@ -44,24 +44,24 @@ struct StatsResult{
     int in_memory = 0;
     int on_disk = 0;
     int disk_chunks = 0;
-    int first_timestamp = 0;
-    int last_timestamp = 0;
+    uint64_t first_timestamp = 0;
+    uint64_t last_timestamp = 0;
 };
 struct GetCommand {
     string metric_name;
-    int64_t from_timestamp = 0;
-    int64_t to_timestamp = 0;
-    pair<vector<int64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
+    uint64_t from_timestamp = 0;
+    uint64_t to_timestamp = 0;
+    pair<vector<uint64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
 
 };
 
 struct AggCommand {
     string metric_name;
-    int64_t from_timestamp = 0;
-    int64_t to_timestamp = 0;
-    int64_t bucket_seconds = 0;
+    uint64_t from_timestamp = 0;
+    uint64_t to_timestamp = 0;
+    uint64_t bucket_seconds = 0;
     string func;
-    pair<vector<int64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
+    pair<vector<uint64_t>, vector<double>> handleRequest(HeadBlock& hb) const;
 };
 
 struct StatsCommand {

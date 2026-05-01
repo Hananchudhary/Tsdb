@@ -87,13 +87,13 @@ bool recv_with_size(int socket_fd, string& out) {
 }
 
 void show_pair_result(string& response, int& i){
-    int64_t size;
-    memcpy(&size, response.data() + i, sizeof(int64_t));
-    i += sizeof(int64_t);
-    for(int64_t j = 0;j < size && i < response.size();j++){
-        int64_t value;
-        memcpy(&value, response.data() + i, sizeof(int64_t));
-        i += sizeof(int64_t);
+    uint64_t size;
+    memcpy(&size, response.data() + i, sizeof(uint64_t));
+    i += sizeof(uint64_t);
+    for(uint64_t j = 0;j < size && i < response.size();j++){
+        uint64_t value;
+        memcpy(&value, response.data() + i, sizeof(uint64_t));
+        i += sizeof(uint64_t);
         double val;
         memcpy(&val, response.data() + i, sizeof(double));
         i += sizeof(double);
@@ -108,7 +108,7 @@ string deserialize(const string& str, int& i, const char del){
         return "";
     }
 
-    string result = str.substr(i, pos - i);
+    string result = str.substr(i, pos - i + 1);
     i = pos + 1;
     return result;
 }
@@ -116,18 +116,17 @@ void show_stats_result(const string& str, int& i){
     cout << deserialize(str, i, '=');
     cout << deserialize(str, i, ' ') << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
-    cout << deserialize(str, i, '=');
+    cout << stoull(deserialize(str, i, ' ')) << endl;
 }
 
 void show_result(string& response) {
@@ -254,7 +253,7 @@ void test_1000_random_roundtrip() {
     cout << "✔ ALL 1000 VALUES MATCH\n";
 }
 
-int main1() {
+int main() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage && FLUSH cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",

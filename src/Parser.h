@@ -18,7 +18,7 @@ class LineProtocolParser {
     static bool is_valid_metric_name(string_view metric_name);
     static vector<string_view> tokenize(string_view line);
     static vector<string_view> split_queries(string_view line);
-    static bool parse_int64(string_view token, int64_t& value);
+    static bool parse_int64(string_view token, uint64_t& value);
     static bool parse_int(string_view token, int& value);
     static bool parse_double(string_view token, double& value);
     static string trim_carriage_return(string_view line);

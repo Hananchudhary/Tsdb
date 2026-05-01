@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <semaphore>
 #include <sys/socket.h>
-#include"./include/config.h"
+
 #include<unordered_map>
 using namespace std;
 namespace fs = filesystem;
@@ -41,7 +41,7 @@ bool initialize() {
                 if (!file.is_open()) continue;
 
                 while (true) {
-                    int64_t ts;
+                    uint64_t ts;
                     double val;
 
                     file.read(reinterpret_cast<char*>(&ts), sizeof(ts));
@@ -69,20 +69,20 @@ bool initialize() {
         return false;
     }
 }
-string serialize(const vector<int64_t>& ts, const vector<double>& values)
+string serialize(const vector<uint64_t>& ts, const vector<double>& values)
 {
     string buffer{};
 
     uint32_t n = ts.size();
-    buffer.resize(n * (sizeof(int64_t) +  sizeof(double)) + 1 + sizeof(int64_t));
-    memset(buffer.data(),0,n * (sizeof(int64_t) +  sizeof(double)) + 1 +sizeof(int64_t));
+    buffer.resize(n * (sizeof(uint64_t) +  sizeof(double)) + 1 + sizeof(uint64_t));
+    memset(buffer.data(),0,n * (sizeof(uint64_t) +  sizeof(double)) + 1 +sizeof(uint64_t));
     uint32_t offset = 0;
-    int64_t s = ts.size();
-    memcpy(buffer.data() + offset, &s, sizeof(int64_t));
-    offset += sizeof(int64_t);
+    uint64_t s = ts.size();
+    memcpy(buffer.data() + offset, &s, sizeof(uint64_t));
+    offset += sizeof(uint64_t);
     for (uint32_t i = 0; i < n;i++) {
-        memcpy(buffer.data() + offset, &ts[i], sizeof(int64_t));
-        offset += sizeof(int64_t);
+        memcpy(buffer.data() + offset, &ts[i], sizeof(uint64_t));
+        offset += sizeof(uint64_t);
         memcpy(buffer.data() + offset, &values[i], sizeof(double));
         offset += sizeof(double);
     }
@@ -98,7 +98,7 @@ string serializeStats(const StatsResult& s) {
         " on_disk=" + to_string(s.on_disk) +
         " disk_chunks=" + to_string(s.disk_chunks) +
         " first_timestamp=" + to_string(s.first_timestamp) +
-        " last_timestamp=" + to_string(s.last_timestamp);
+        " last_timestamp=" + to_string(s.last_timestamp) + ' ';
 }
 string get_result(const CommandData& command) {
     string res{};
@@ -131,7 +131,7 @@ string get_result(const CommandData& command) {
             return string(1, static_cast<char>(MessageType::error)) + "No such metric exists.";
         }
         HeadBlock& hb = metric_registery[gets.metric_name];
-        pair<vector<int64_t>, vector<double>> res = gets.handleRequest(hb);
+        pair<vector<uint64_t>, vector<double>> res = gets.handleRequest(hb);
         return response + serialize(res.first, res.second);
     }
     if (holds_alternative<AggCommand>(command)) {
@@ -141,7 +141,7 @@ string get_result(const CommandData& command) {
         }
         string response(1, static_cast<char>(MessageType::AGG));
         HeadBlock& hb = metric_registery[agg.metric_name];
-        pair<vector<int64_t>, vector<double>> res = agg.handleRequest(hb);
+        pair<vector<uint64_t>, vector<double>> res = agg.handleRequest(hb);
         return response + serialize(res.first, res.second);
     }
     if (holds_alternative<StatsCommand>(command)) {

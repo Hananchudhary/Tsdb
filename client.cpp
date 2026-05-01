@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "./include/helpers.h"
 #include <sys/socket.h>
-#include "server_config.h"
+#include"server_config.h"
 using namespace std;
 
 ssize_t recv_all(int socket_fd, void* data, size_t length) {
@@ -71,17 +71,18 @@ bool recv_with_size(int socket_fd, string& out) {
     return recv_all(socket_fd, out.data(), len) > 0;
 }
 void show_pair_result(string& response, int& i){
-    int64_t size;
-    memcpy(&size, response.data() + i, sizeof(int64_t));
-    i += sizeof(int64_t);
-    for(int64_t j = 0;j < size && i < response.size();j++){
-        int64_t value;
-        memcpy(&value, response.data() + i, sizeof(int64_t));
-        i += sizeof(int64_t);
+    uint64_t size;
+    memcpy(&size, response.data() + i, sizeof(uint64_t));
+    i += sizeof(uint64_t);
+    for(uint64_t j = 0;j < size && i < response.size();j++){
+        uint64_t value;
+        memcpy(&value, response.data() + i, sizeof(uint64_t));
+        i += sizeof(uint64_t);
         double val;
         memcpy(&val, response.data() + i, sizeof(double));
         i += sizeof(double);
         cout << "(" << value << " , " << val << ")\n";
+        
     }
 }
 string deserialize(const string& str, int& i, const char del){
@@ -92,7 +93,7 @@ string deserialize(const string& str, int& i, const char del){
         return "";
     }
 
-    string result = str.substr(i, pos - i);
+    string result = str.substr(i, pos - i+1);
     i = pos + 1;
     return result;
 }
@@ -100,18 +101,19 @@ void show_stats_result(const string& str, int& i){
     cout << deserialize(str, i, '=');
     cout << deserialize(str, i, ' ') << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
-    cout << stoi(deserialize(str, i, ' ')) << endl;
+    cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
+    cout << i << endl;
 }
 
 void show_result(string& response) {
