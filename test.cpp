@@ -368,8 +368,75 @@ void test_value_random_walk() {
 
     cout << "✔ Test passed: random walk encoding/decoding successful\n";
 }
+pair<vector<uint64_t>, vector<double>> generate_test_data(int N) {
+    vector<uint64_t> timestamps;
+    vector<double> values;
+
+    std::mt19937_64 rng(42);
+
+    uint64_t t = 1000000;
+
+    for (int i = 0; i < N; i++) {
+        t += (rng() % 10 + 1);  // monotonic increase
+        timestamps.push_back(t);
+
+        double drift = (rng() % 1000) / 1000.0;
+        values.push_back(1000.0 + sin(i * 0.01) + drift);
+    }
+
+    return {timestamps, values};
+}
+void test_chunk_roundtrip() {
+
+    cout << "=== CHUNK ROUNDTRIP TEST ===\n";
+
+    string metric = "test_metric";
+    auto [input_ts, input_val] = generate_test_data(120);
+    cout << "Data populated\n";
+
+    HeadBlock hb;
+    hb.timestamps = input_ts;
+    hb.values = input_val;
+
+    string err = chunk_file_writer(&hb, metric);
+    if (!err.empty()) {
+        cout << "WRITE FAILED: " << err << "\n";
+        return;
+    }
+    cout << "Data written\n";
+    auto [out_ts, out_val] = chunk_file_reader(metric);
+    cout << "Data Read\n";
+    // 4. Validate size
+    if (out_ts.size() != input_ts.size() ||
+        out_val.size() != input_val.size()) {
+        cout << "❌ SIZE MISMATCH\n";
+        cout << "ts: " << out_ts.size() << " vs " << input_ts.size() << "\n";
+        cout << "val: " << out_val.size() << " vs " << input_val.size() << "\n";
+        return;
+    }
+
+    // 5. Validate content
+    for (size_t i = 0; i < input_ts.size(); i++) {
+
+        if (input_ts[i] != out_ts[i]) {
+            cout << "❌ TIMESTAMP MISMATCH at " << i << "\n";
+            cout << "expected: " << input_ts[i]
+                 << " got: " << out_ts[i] << "\n";
+            return;
+        }
+
+        if (input_val[i] != out_val[i]) {
+            cout << "❌ VALUE MISMATCH at " << i << "\n";
+            cout << "expected: " << input_val[i]
+                 << " got: " << out_val[i] << "\n";
+            return;
+        }
+    }
+
+    cout << "✔ CHUNK ROUNDTRIP SUCCESS\n";
+}
 int main(){
-    test_value_random_walk();
+    test_chunk_roundtrip();
     return 0;
 }
 int main1() {

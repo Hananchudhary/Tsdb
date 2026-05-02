@@ -3,6 +3,7 @@
 #include<vector>
 #include<memory.h>
 #include"../include/helpers.h"
+#include<filesystem>
 using namespace std;
 void bw_write(BitWriter* bw, uint64_t value, uint16_t n_bits) {
     value = value << (64 - n_bits);
@@ -183,7 +184,11 @@ void value_encode(BitWriter* bw, const vector<double>& values){
 
             uint8_t n = 64 - prev_lead - prev_trail;
             x = x >> prev_trail;
-            
+    //         cout << "ENC i=" << i
+    //  << " n=" << (int)n
+    //  << " lead=" << (int)prev_lead
+    //  << " trail=" << (int)prev_trail
+    //  << endl;
             bw_write(bw, x, n);
         }
         else{
@@ -192,7 +197,11 @@ void value_encode(BitWriter* bw, const vector<double>& values){
             uint8_t n = 64 - lead - trail;
             bw_write(bw, n, 6);
             x = x >> trail;
-            
+    //         cout << "ENC i=" << i
+    //  << " n=" << (int)n
+    //  << " lead=" << (int)lead
+    //  << " trail=" << (int)trail
+    //  << endl;
             bw_write(bw, x, n);
         }
         prev_lead = lead;
@@ -227,10 +236,15 @@ vector<double> value_decode(BitReader* br, const uint16_t& N){
         if (br_read(br, 1) == 0) {
             uint8_t n = 64 - prev_lead - prev_trail;
             curr_bits = br_read(br, n);
-
+    //         cout << "ENC i=" << i
+    //  << " n=" << (int)n
+    //  << " lead=" << (int)prev_lead
+    //  << " trail=" << (int)prev_trail
+    //  << endl;
             curr_bits <<= prev_trail;
             prev_lead = find_leading_zeroes(curr_bits);
-            prev_trail = find_trailing_zeroes(curr_bits) + prev_trail;
+            prev_trail = find_trailing_zeroes(curr_bits);
+
         } 
         else {
             uint8_t lead = br_read(br, 5);
@@ -238,7 +252,11 @@ vector<double> value_decode(BitReader* br, const uint16_t& N){
             uint8_t trail = 64 - lead - n;
 
             curr_bits = br_read(br, n);
-
+    //         cout << "ENC i=" << i
+    //  << " n=" << (int)n
+    //  << " lead=" << (int)lead
+    //  << " trail=" << (int)trail
+    //  << endl;
             curr_bits <<= trail;
             prev_lead = lead;
             prev_trail = trail;
@@ -253,4 +271,218 @@ vector<double> value_decode(BitReader* br, const uint16_t& N){
     }
 
     return vals;
+}
+template <typename T>
+string encode_le(T value) {
+    static_assert(is_integral<T>::value, "Only integral types allowed");
+
+    string out(sizeof(T), '\0');
+
+    for (size_t i = 0; i < sizeof(T); i++) {
+        out[i] = static_cast<char>((value >> (8 * i)) & 0xFF);
+    }
+
+    return out;
+}
+template<typename T>
+T decode_le(const string& data) {
+    static_assert(is_integral<T>::value, "Only integral types allowed");
+
+    if (data.size() != sizeof(T)) {
+        throw runtime_error("Invalid input size");
+    }
+
+    T value = 0;
+
+    for (size_t i = 0; i < sizeof(T); i++) {
+        value |= (static_cast<T>(
+            static_cast<unsigned char>(data[i])
+        ) << (8 * i));
+    }
+
+    return value;
+}
+void crc_update(uint64_t& crc, const char* data, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++)
+            crc = (crc >> 1) ^ (-(crc & 1) & 0xEDB8832002388BDE);
+    }
+}
+string chunk_file_writer(HeadBlock* hb, const string& metric_name){
+    if(hb->timestamps.size() == 0) return "Empty timestamps.";
+    string dirPath = "./data/" + metric_name;
+    string filePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".tmp";
+
+    filesystem::create_directories(dirPath);
+
+    ofstream file(filePath, ios::binary | ios::app);
+    if (!file.is_open()) return "Cannot open the file.";
+    string magic("TSDB");
+    string version =  encode_le<uint32_t>(2);
+    string point_count = encode_le<uint32_t>(hb->timestamps.size());
+    string first_timestamp = encode_le<uint64_t>(hb->timestamps[0]);
+    string last_timestamp = encode_le<uint64_t>(hb->timestamps[hb->timestamps.size() - 1]);
+    BitWriter ts_bitstream, val_bitstream;
+    timestamp_encode(&ts_bitstream, hb->timestamps);
+    value_encode(&val_bitstream, hb->values);
+    string ts_bitstream_len = encode_le<uint32_t>(ts_bitstream.buffer.size());
+    string val_bitstream_len = encode_le<uint32_t>(val_bitstream.buffer.size());
+    uint64_t crc = 0xffffffffffffffff;
+    file.write(magic.data(),magic.size());
+    crc_update(crc, magic.data(),magic.size());
+    file.write(version.data(), version.size());
+    crc_update(crc, version.data(),version.size());
+    file.write(point_count.data(),point_count.size());
+    crc_update(crc, point_count.data(),point_count.size());
+    file.write(first_timestamp.data(),first_timestamp.size());
+    crc_update(crc, first_timestamp.data(),first_timestamp.size());
+    file.write(last_timestamp.data(),last_timestamp.size());
+    crc_update(crc, last_timestamp.data(),last_timestamp.size());
+    file.write(ts_bitstream_len.data(), ts_bitstream_len.size());
+    crc_update(crc, ts_bitstream_len.data(), ts_bitstream_len.size());
+    file.write(val_bitstream_len.data(), val_bitstream_len.size());
+    crc_update(crc, val_bitstream_len.data(), val_bitstream_len.size());
+    for(uint32_t i = 0;i < ts_bitstream.buffer.size();i++){
+        string buffer = reinterpret_cast<const char*>(&ts_bitstream.buffer[i]);
+        file.write(buffer.data(), 1);
+        crc_update(crc, buffer.data(),1);
+    }
+    for(uint32_t i = 0;i < val_bitstream.buffer.size();i++){
+        string buffer = reinterpret_cast<const char*>(&val_bitstream.buffer[i]);
+        file.write(buffer.data(), 1);
+        crc_update(crc, buffer.data(),1);
+    }
+    crc ^= 0xFFFFFFFFFFFFFFFF;
+    string crc1 = encode_le<uint64_t>(crc);
+    file.write(crc1.data(), crc1.size());
+    string newfilePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".chunk";
+    try {
+        filesystem::rename(filePath, newfilePath);
+        return "";
+    } catch (const filesystem::filesystem_error& e) {
+        return "Rename Error.";
+    }
+    return "";
+}
+vector<string> get_chunk_files(const string& dirPath) {
+    vector<string> files;
+
+    for (const auto& entry : filesystem::directory_iterator(dirPath)) {
+        if (entry.is_regular_file()) {
+            string path = entry.path().string();
+
+            if (entry.path().extension() == ".tmp" ||
+                entry.path().extension() == ".chunk") {
+                files.push_back(path);
+            }
+        }
+    }
+    sort(files.begin(), files.end());
+
+    return files;
+}
+pair<vector<uint64_t>, vector<double>>
+chunk_file_reader(const string& metric_name) {
+
+    pair<vector<uint64_t>, vector<double>> res;
+
+    string dirPath = "./data/" + metric_name;
+    vector<string> filePaths = get_chunk_files(dirPath);
+
+    for (const auto& path : filePaths) {
+        try{
+
+            ifstream file(path, ios::binary);
+            if (!file.is_open()) continue;
+
+            uint64_t crc = 0xFFFFFFFFFFFFFFFF;
+
+            auto read_and_crc = [&](char* buf, size_t len) {
+                file.read(buf, len);
+                crc_update(crc, buf, len);
+            };
+
+            // ---------------- MAGIC ----------------
+            char magic[4];
+            read_and_crc(magic, 4);
+
+            if (string(magic, 4) != "TSDB")
+                continue;
+
+            // ---------------- VERSION ----------------
+            string version_raw(4, '\0');
+            read_and_crc(version_raw.data(), 4);
+
+            if (decode_le<uint32_t>(version_raw) != 2)
+                continue;
+
+            // ---------------- COUNT ----------------
+            string count_raw(4, '\0');
+            read_and_crc(count_raw.data(), 4);
+            uint32_t count = decode_le<uint32_t>(count_raw);
+
+            // ---------------- TIMESTAMPS ----------------
+            string first_ts_raw(8, '\0'), last_ts_raw(8, '\0');
+            read_and_crc(first_ts_raw.data(), 8);
+            read_and_crc(last_ts_raw.data(), 8);
+
+            uint64_t first_ts = decode_le<uint64_t>(first_ts_raw);
+            uint64_t last_ts  = decode_le<uint64_t>(last_ts_raw);
+
+            // ---------------- LENGTHS ----------------
+            string ts_len_raw(4, '\0'), val_len_raw(4, '\0');
+            read_and_crc(ts_len_raw.data(), 4);
+            read_and_crc(val_len_raw.data(), 4);
+
+            uint32_t ts_len  = decode_le<uint32_t>(ts_len_raw);
+            uint32_t val_len = decode_le<uint32_t>(val_len_raw);
+
+            // ---------------- TIMESTAMP STREAM ----------------
+            vector<uint8_t> ts_buffer(ts_len);
+            read_and_crc((char*)ts_buffer.data(), ts_len);
+
+            BitReader ts_br(ts_buffer, 0);
+            vector<uint64_t> timestamps =
+                timestamp_decode(&ts_br, count);
+
+            // ---------------- VALUE STREAM ----------------
+            vector<uint8_t> val_buffer(val_len);
+            read_and_crc((char*)val_buffer.data(), val_len);
+
+            BitReader val_br(val_buffer, 0);
+            vector<double> values =
+                value_decode(&val_br, count);
+
+            // ---------------- READ STORED CRC ----------------
+            uint64_t stored_crc;
+            file.read(reinterpret_cast<char*>(&stored_crc), 8);
+
+            // ---------------- FINALIZE CRC ----------------
+            crc ^= 0xFFFFFFFFFFFFFFFF;
+
+            if (stored_crc != crc) {
+                cout << "❌ CRC mismatch: " << path << endl;
+                continue;
+            }
+
+            res.first.insert(res.first.end(),
+                             timestamps.begin(),
+                             timestamps.end());
+
+            res.second.insert(res.second.end(),
+                              values.begin(),
+                              values.end());
+
+            file.close();
+        }
+        catch (const exception& e) {
+            cout << "Error: " << e.what() << "\n";
+        }
+        catch (...) {
+            cout << "Unknown fatal error\n";
+        }
+    }
+
+    return res;
 }

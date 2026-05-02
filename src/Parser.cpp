@@ -257,7 +257,7 @@ bool LineProtocolParser::is_valid_metric_name(string_view metric_name) {
     for (char ch : metric_name) {
         const bool is_alpha = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
         const bool is_digit = ch >= '0' && ch <= '9';
-        const bool is_underscore = ch == '_' || ch == '-' || ch == '.';
+        const bool is_underscore = ch == '_' || ch == '-';
         if (!is_alpha && !is_digit && !is_underscore) {
             return false;
         }
