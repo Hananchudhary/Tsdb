@@ -252,8 +252,127 @@ void test_1000_random_roundtrip() {
 
     cout << "✔ ALL 1000 VALUES MATCH\n";
 }
+void test_timestamp_random_monotonic() {
+    cout << "=== Timestamp Encode/Decode Test (Random Monotonic) ===\n";
 
-int main() {
+    BitWriter bw;
+    vector<uint64_t> input;
+
+    // 1. Generate random but non-decreasing timestamps
+    uint64_t current = 1;
+
+    for (int i = 0; i < 1000; i++) {
+        input.push_back(current);
+
+        // random increment (0 to 20)
+        uint64_t step = rand() % 21;  
+        current += step;
+    }
+
+    // 2. Encode
+    timestamp_encode(&bw, input);
+
+    // 3. Decode
+    BitReader br(bw.buffer, 0);
+    vector<uint64_t> output = timestamp_decode(&br, input.size());
+
+    // 4. Verify size
+    if (output.size() != input.size()) {
+        cout << "❌ Size mismatch: "
+             << output.size() << " vs " << input.size() << "\n";
+        return;
+    }
+
+    // 5. Verify exact values
+    for (size_t i = 0; i < input.size(); i++) {
+        if (input[i] != output[i]) {
+            cout << "❌ Mismatch at index " << i << "\n";
+            cout << "Expected: " << input[i]
+                 << " Got: " << output[i] << "\n";
+
+            // print context (VERY useful)
+            int start = max(0, (int)i - 5);
+            int end = min((int)input.size(), (int)i + 5);
+
+            cout << "\nContext around failure:\n";
+            for (int j = start; j < end; j++) {
+                cout << j << ": expected=" << input[j]
+                     << " got=" << output[j] << endl;
+            }
+
+            return;
+        }
+    }
+
+    cout << "✔ Test passed: perfect round-trip encoding/decoding\n";
+}
+void test_value_random_walk() {
+    cout << "=== Value Encode/Decode Test (Random Walk 1000 doubles) ===\n";
+
+    BitWriter bw;
+    vector<double> input;
+
+    // 1. Generate slowly drifting random walk
+    double current = 1000.0;
+
+    for (int i = 0; i < 10; i++) {
+        input.push_back(current);
+
+        // small drift: -1.0 to +1.0
+        double step = ((rand() % 2001) - 1000) / 1000.0;
+        if(i % 10 == 0)
+            input.push_back(-1 * current);
+        current += step;
+    }
+    char* parsed = nullptr;
+    input.push_back(strtod("NaN", &parsed));
+    input.push_back(strtod("inf", &parsed));
+    input.push_back(strtod("-inf", &parsed));
+
+    // 2. Encode
+    value_encode(&bw, input);
+
+    // 3. Decode
+    BitReader br(bw.buffer, 0);
+    vector<double> output = value_decode(&br, input.size());
+
+    // 4. Check size
+    if (output.size() != input.size()) {
+        cout << "❌ Size mismatch: "
+             << output.size() << " vs " << input.size() << "\n";
+        return;
+    }
+
+    // 5. Compare values (with tolerance for floating point)
+    const double EPS = 1e-9;
+
+    for (size_t i = 0; i < input.size(); i++) {
+        if (fabs(input[i] - output[i]) > EPS) {
+            cout << "❌ Mismatch at index " << i << "\n";
+            cout << "Expected: " << input[i]
+                 << " Got: " << output[i] << "\n";
+
+            // context window for debugging
+            int start = max(0, (int)i - 5);
+            int end = min((int)input.size(), (int)i + 5);
+
+            cout << "\nContext:\n";
+            for (int j = start; j < end; j++) {
+                cout << j << ": expected=" << input[j]
+                     << " got=" << output[j] << "\n";
+            }
+
+            return;
+        }
+    }
+
+    cout << "✔ Test passed: random walk encoding/decoding successful\n";
+}
+int main(){
+    test_value_random_walk();
+    return 0;
+}
+int main1() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage && FLUSH cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",
