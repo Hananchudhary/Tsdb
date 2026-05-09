@@ -272,36 +272,6 @@ vector<double> value_decode(BitReader* br, const uint16_t& N){
 
     return vals;
 }
-template <typename T>
-string encode_le(T value) {
-    static_assert(is_integral<T>::value, "Only integral types allowed");
-
-    string out(sizeof(T), '\0');
-
-    for (size_t i = 0; i < sizeof(T); i++) {
-        out[i] = static_cast<char>((value >> (8 * i)) & 0xFF);
-    }
-
-    return out;
-}
-template<typename T>
-T decode_le(const string& data) {
-    static_assert(is_integral<T>::value, "Only integral types allowed");
-
-    if (data.size() != sizeof(T)) {
-        throw runtime_error("Invalid input size");
-    }
-
-    T value = 0;
-
-    for (size_t i = 0; i < sizeof(T); i++) {
-        value |= (static_cast<T>(
-            static_cast<unsigned char>(data[i])
-        ) << (8 * i));
-    }
-
-    return value;
-}
 void crc_update(uint64_t& crc, const char* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
@@ -319,15 +289,15 @@ string chunk_file_writer(HeadBlock* hb, const string& metric_name){
     ofstream file(filePath, ios::binary | ios::app);
     if (!file.is_open()) return "Cannot open the file.";
     string magic("TSDB");
-    string version =  encode_le<uint32_t>(2);
-    string point_count = encode_le<uint32_t>(hb->timestamps.size());
-    string first_timestamp = encode_le<uint64_t>(hb->timestamps[0]);
-    string last_timestamp = encode_le<uint64_t>(hb->timestamps[hb->timestamps.size() - 1]);
+    string version =  to_string(2);
+    string point_count = to_string(hb->timestamps.size());
+    string first_timestamp = to_string(hb->timestamps[0]);
+    string last_timestamp = to_string(hb->timestamps[hb->timestamps.size() - 1]);
     BitWriter ts_bitstream, val_bitstream;
     timestamp_encode(&ts_bitstream, hb->timestamps);
     value_encode(&val_bitstream, hb->values);
-    string ts_bitstream_len = encode_le<uint32_t>(ts_bitstream.buffer.size());
-    string val_bitstream_len = encode_le<uint32_t>(val_bitstream.buffer.size());
+    string ts_bitstream_len = to_string(ts_bitstream.buffer.size());
+    string val_bitstream_len = to_string(val_bitstream.buffer.size());
     uint64_t crc = 0xffffffffffffffff;
     file.write(magic.data(),magic.size());
     crc_update(crc, magic.data(),magic.size());
@@ -354,7 +324,7 @@ string chunk_file_writer(HeadBlock* hb, const string& metric_name){
         crc_update(crc, buffer.data(),1);
     }
     crc ^= 0xFFFFFFFFFFFFFFFF;
-    string crc1 = encode_le<uint64_t>(crc);
+    string crc1 = to_string(crc);
     file.write(crc1.data(), crc1.size());
     string newfilePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".chunk";
     try {
@@ -414,7 +384,7 @@ chunk_file_reader(const string& metric_name) {
             string version_raw(4, '\0');
             read_and_crc(version_raw.data(), 4);
 
-            if (decode_le<uint32_t>(version_raw) != 2)
+            if ((version_raw) != 2)
                 continue;
 
             // ---------------- COUNT ----------------
