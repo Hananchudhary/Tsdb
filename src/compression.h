@@ -286,46 +286,44 @@ string chunk_file_writer(HeadBlock* hb, const string& metric_name){
 
     filesystem::create_directories(dirPath);
 
-    ofstream file(filePath, ios::binary | ios::app);
+    ofstream file(filePath, ios::binary);
     if (!file.is_open()) return "Cannot open the file.";
     string magic("TSDB");
-    string version =  to_string(2);
-    string point_count = to_string(hb->timestamps.size());
-    string first_timestamp = to_string(hb->timestamps[0]);
-    string last_timestamp = to_string(hb->timestamps[hb->timestamps.size() - 1]);
+    uint32_t version =  2;
+    uint32_t point_count = hb->timestamps.size();
+    uint64_t first_timestamp = (hb->timestamps[0]);
+    uint64_t last_timestamp = (hb->timestamps[hb->timestamps.size() - 1]);
     BitWriter ts_bitstream, val_bitstream;
     timestamp_encode(&ts_bitstream, hb->timestamps);
     value_encode(&val_bitstream, hb->values);
-    string ts_bitstream_len = to_string(ts_bitstream.buffer.size());
-    string val_bitstream_len = to_string(val_bitstream.buffer.size());
+    uint32_t ts_bitstream_len = (ts_bitstream.buffer.size());
+    uint32_t val_bitstream_len = (val_bitstream.buffer.size());
     uint64_t crc = 0xffffffffffffffff;
     file.write(magic.data(),magic.size());
     crc_update(crc, magic.data(),magic.size());
-    file.write(version.data(), version.size());
-    crc_update(crc, version.data(),version.size());
-    file.write(point_count.data(),point_count.size());
-    crc_update(crc, point_count.data(),point_count.size());
-    file.write(first_timestamp.data(),first_timestamp.size());
-    crc_update(crc, first_timestamp.data(),first_timestamp.size());
-    file.write(last_timestamp.data(),last_timestamp.size());
-    crc_update(crc, last_timestamp.data(),last_timestamp.size());
-    file.write(ts_bitstream_len.data(), ts_bitstream_len.size());
-    crc_update(crc, ts_bitstream_len.data(), ts_bitstream_len.size());
-    file.write(val_bitstream_len.data(), val_bitstream_len.size());
-    crc_update(crc, val_bitstream_len.data(), val_bitstream_len.size());
+    file.write(reinterpret_cast<const char*>(&version), sizeof(uint32_t));
+    crc_update(crc, reinterpret_cast<const char*>(&version),sizeof(uint32_t));
+    file.write(reinterpret_cast<const char*>(&point_count),sizeof(uint32_t));
+    crc_update(crc, reinterpret_cast<const char*>(&point_count),sizeof(uint32_t));
+    file.write(reinterpret_cast<const char*>(&first_timestamp),sizeof(uint64_t));
+    crc_update(crc, reinterpret_cast<const char*>(&first_timestamp),sizeof(uint64_t));
+    file.write(reinterpret_cast<const char*>(&last_timestamp),sizeof(uint64_t));
+    crc_update(crc, reinterpret_cast<const char*>(&last_timestamp),sizeof(uint64_t));
+    file.write(reinterpret_cast<const char*>(&ts_bitstream_len), sizeof(uint32_t));
+    crc_update(crc, reinterpret_cast<const char*>(&ts_bitstream_len), sizeof(uint32_t));
+    file.write(reinterpret_cast<const char*>(&val_bitstream_len), sizeof(uint32_t));
+    crc_update(crc, reinterpret_cast<const char*>(&val_bitstream_len), sizeof(uint32_t));
     for(uint32_t i = 0;i < ts_bitstream.buffer.size();i++){
-        string buffer = reinterpret_cast<const char*>(&ts_bitstream.buffer[i]);
-        file.write(buffer.data(), 1);
-        crc_update(crc, buffer.data(),1);
+        file.write(reinterpret_cast<const char*>(&ts_bitstream.buffer[i]), 1);
+        crc_update(crc, reinterpret_cast<const char*>(&ts_bitstream.buffer[i]),1);
     }
     for(uint32_t i = 0;i < val_bitstream.buffer.size();i++){
-        string buffer = reinterpret_cast<const char*>(&val_bitstream.buffer[i]);
-        file.write(buffer.data(), 1);
-        crc_update(crc, buffer.data(),1);
+        file.write(reinterpret_cast<const char*>(&val_bitstream.buffer[i]), 1);
+        crc_update(crc, reinterpret_cast<const char*>(&val_bitstream.buffer[i]),1);
     }
     crc ^= 0xFFFFFFFFFFFFFFFF;
-    string crc1 = to_string(crc);
-    file.write(crc1.data(), crc1.size());
+    file.write(reinterpret_cast<const char*>(&crc), sizeof(uint64_t));
+    file.close();
     string newfilePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".chunk";
     try {
         filesystem::rename(filePath, newfilePath);
@@ -352,12 +350,6 @@ vector<string> get_chunk_files(const string& dirPath) {
 
     return files;
 }
-template <typename T>
-T decode_le(string buf){
-    T u = 0;
-    memcpy(&u, buf.data(), buf.size());
-    return u;
-}
 pair<vector<uint64_t>, vector<double>>
 chunk_file_reader(const string& metric_name) {
 
@@ -368,54 +360,54 @@ chunk_file_reader(const string& metric_name) {
 
     for (const auto& path : filePaths) {
         try{
-
             ifstream file(path, ios::binary);
-            if (!file.is_open()) continue;
+            if (!file.is_open()){
+                cout << "cannot open file" << path << endl;
+            }
 
             uint64_t crc = 0xFFFFFFFFFFFFFFFF;
 
-            auto read_and_crc = [&](char* buf, size_t len) {
-                file.read(buf, len);
-                crc_update(crc, buf, len);
-            };
-
-            // ---------------- MAGIC ----------------
-            char magic[4];
-            read_and_crc(magic, 4);
-
-            if (string(magic, 4) != "TSDB")
+            string magic(4, '\0');
+            file.read(magic.data(),4);
+            if (magic != "TSDB"){
+                cout << "Wrong magic\n";
                 continue;
+            }
+            crc_update(crc, magic.data(),4);
 
-            // ---------------- VERSION ----------------
-            string version_raw(4, '\0');
-            read_and_crc(version_raw.data(), 4);
-            if (decode_le<uint32_t>(version_raw) != 2)
+            uint32_t ver= 0;
+            file.read(reinterpret_cast<char*>(&ver),sizeof(uint32_t));
+            if (ver != 2){
+                cout << "Wrong version\n";
                 continue;
+            }
+            crc_update(crc, reinterpret_cast<char*>(&ver), sizeof(uint32_t));
+            
+            uint32_t count = 0;
+            file.read(reinterpret_cast<char*>(&count),sizeof(uint32_t));
+            crc_update(crc, reinterpret_cast<char*>(&count),sizeof(uint32_t));
+            
 
-            // ---------------- COUNT ----------------
-            string count_raw(4, '\0');
-            read_and_crc(count_raw.data(), 4);
-            uint32_t count = decode_le<uint32_t>(count_raw);
+            uint64_t first_ts = 0;
+            uint64_t last_ts  = 0;
+            file.read(reinterpret_cast<char*>(&first_ts),sizeof(uint64_t));
+            crc_update(crc, reinterpret_cast<char*>(&first_ts),sizeof(uint64_t));
 
-            // ---------------- TIMESTAMPS ----------------
-            string first_ts_raw(8, '\0'), last_ts_raw(8, '\0');
-            read_and_crc(first_ts_raw.data(), 8);
-            read_and_crc(last_ts_raw.data(), 8);
+            file.read(reinterpret_cast<char*>(&last_ts),sizeof(uint64_t));
+            crc_update(crc, reinterpret_cast<char*>(&last_ts),sizeof(uint64_t));
 
-            uint64_t first_ts = decode_le<uint64_t>(first_ts_raw);
-            uint64_t last_ts  = decode_le<uint64_t>(last_ts_raw);
+            uint32_t ts_len  = 0;
+            uint32_t val_len = 0;
+            file.read(reinterpret_cast<char*>(&ts_len),sizeof(uint32_t));
+            crc_update(crc, reinterpret_cast<char*>(&ts_len),sizeof(uint32_t));
+            file.read(reinterpret_cast<char*>(&val_len),sizeof(uint32_t));
+            crc_update(crc, reinterpret_cast<char*>(&val_len),sizeof(uint32_t));
 
-            // ---------------- LENGTHS ----------------
-            string ts_len_raw(4, '\0'), val_len_raw(4, '\0');
-            read_and_crc(ts_len_raw.data(), 4);
-            read_and_crc(val_len_raw.data(), 4);
-
-            uint32_t ts_len  = decode_le<uint32_t>(ts_len_raw);
-            uint32_t val_len = decode_le<uint32_t>(val_len_raw);
-
-            // ---------------- TIMESTAMP STREAM ----------------
             vector<uint8_t> ts_buffer(ts_len);
-            read_and_crc((char*)ts_buffer.data(), ts_len);
+            for(uint32_t i =0;i<ts_len;i++){
+                file.read(reinterpret_cast<char*>(&ts_buffer[i]),sizeof(uint8_t));
+                crc_update(crc, reinterpret_cast<char*>(&ts_buffer[i]),sizeof(uint8_t));
+            }
 
             BitReader ts_br(ts_buffer, 0);
             vector<uint64_t> timestamps =
@@ -423,7 +415,10 @@ chunk_file_reader(const string& metric_name) {
 
             // ---------------- VALUE STREAM ----------------
             vector<uint8_t> val_buffer(val_len);
-            read_and_crc((char*)val_buffer.data(), val_len);
+            for(uint32_t i =0;i<val_len;i++){
+                file.read(reinterpret_cast<char*>(&val_buffer[i]),sizeof(uint8_t));
+                crc_update(crc, reinterpret_cast<char*>(&val_buffer[i]),sizeof(uint8_t));
+            }
 
             BitReader val_br(val_buffer, 0);
             vector<double> values =

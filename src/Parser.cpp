@@ -11,12 +11,12 @@
 #include"compression.h"
 using namespace std;
 
-ParseResult make_error(string message, string_view line) {
+ParseResult make_error(string message,const string& line) {
     ParseResult result;
     if(message[message.size()-1] != '.'){
         message += '.';
     }
-    result.error = ParseError{move(message), string(line)};
+    result.error = ParseError{move(message), line};
     return result;
 }
 
@@ -33,21 +33,14 @@ bool LineProtocolParser::has_pending_data() const {
 size_t LineProtocolParser::pending_bytes() const {
     return buffer_.size();
 }
-bool is_correct_func(string_view comm) {
-    vector<string_view> funcs{"avg", "min", "max", "sum", "count"};
+bool is_correct_func(const string& comm) {
+    vector<string> funcs{
+        "avg", "min", "max", "sum", "count"
+    };
 
-    for (string_view f : funcs) {
+    for (const string& f : funcs) {
         if (f.size() != comm.size()) continue;
-
-        bool match = true;
-        for (size_t i = 0; i < f.size(); i++) {
-            if (tolower(f[i]) != tolower(comm[i])) {
-                match = false;
-                break;
-            }
-        }
-
-        if (match) return true;
+        if(comm == f) return true;
     }
 
     return false;
@@ -59,23 +52,12 @@ void convert_lower(string& str){
         }
     }
 }
-bool isEqual(const char* command, string_view comm) {
-    size_t len = strlen(command);
-    if (len != comm.size()) return false;
-
-    for (size_t i = 0; i < len; i++) {
-        if (tolower(command[i]) != tolower(comm[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-vector<ParseResult> LineProtocolParser::parse_line(string_view raw_line) {
+vector<ParseResult> LineProtocolParser::parse_line(string& raw_line) {
     if (!raw_line.empty()) {
         buffer_.append(raw_line.data(), raw_line.size());
     }
     string line = trim_carriage_return(raw_line);
-    vector<string_view> queries = split_queries(line);
+    vector<string> queries = split_queries(line);
     vector<ParseResult> results;
 
     if (queries.empty()) {
@@ -84,8 +66,8 @@ vector<ParseResult> LineProtocolParser::parse_line(string_view raw_line) {
     }
 
     results.reserve(queries.size());
-    for (string_view query : queries) {
-        const string_view trimmed_query = trim_whitespace(query);
+    for (string query : queries) {
+        const string trimmed_query = trim_whitespace(query);
         if (trimmed_query.empty()) {
             results.push_back(make_error("empty command between && separators.", line));
             continue;
@@ -96,17 +78,17 @@ vector<ParseResult> LineProtocolParser::parse_line(string_view raw_line) {
     return results;
 }
 
-ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
+ParseResult LineProtocolParser::parse_single_command(const string& raw_line) {
     string line(raw_line);
-    vector<string_view> tokens = tokenize(line);
+    vector<string> tokens = tokenize(line);
 
     if (tokens.empty()) {
         return make_error("empty command.", line);
     }
 
-    const string_view command = tokens[0];
-
-    if (isEqual("PUT", command)) {
+    string command = tokens[0];
+    convert_lower(command);
+    if (command == "put") {
         if (tokens.size() != 4) {
             return make_error("PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.", line);
         }
@@ -134,7 +116,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    if (isEqual("GET", command)) {
+    if (command == "get") {
         if (tokens.size() != 4) {
             return make_error("GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.", line);
         }
@@ -160,7 +142,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    if (isEqual("AGG", command)) {
+    if (command == "agg") {
         if (tokens.size() != 6) {
             return make_error("AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.", line);
         }
@@ -172,6 +154,8 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         uint64_t from_timestamp = 0;
         uint64_t to_timestamp = 0;
         uint64_t bucket_seconds = 0;
+        convert_lower(tokens[5]);
+
         if (!parse_int64(tokens[2], from_timestamp) || !parse_int64(tokens[3], to_timestamp)) {
             return make_error("invalid timestamp format.", line);
         }
@@ -201,7 +185,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    if (isEqual("STATS", command)) {
+    if (command == "stats") {
         if (tokens.size() != 2) {
             return make_error("STATS expects 1 argument: STATS <metric_name>.", line);
         }
@@ -218,7 +202,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    if (isEqual("FLUSH", command)) {
+    if (command == "flush") {
         if (tokens.size() != 2) {
             return make_error("FLUSH expects 1 argument: FLUSH <metric_name>.", line);
         }
@@ -235,7 +219,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
         return result;
     }
 
-    if (isEqual("QUIT", command)) {
+    if (command == "quit") {
         if (tokens.size() != 1) {
             return make_error("QUIT expects no arguments.", line);
         }
@@ -251,7 +235,7 @@ ParseResult LineProtocolParser::parse_single_command(string_view raw_line) {
     return make_error("unknown command type.", line);
 }
 
-bool LineProtocolParser::is_valid_metric_name(string_view metric_name) {
+bool LineProtocolParser::is_valid_metric_name(const string& metric_name) {
     if (metric_name.empty()) {
         return false;
     }
@@ -268,8 +252,8 @@ bool LineProtocolParser::is_valid_metric_name(string_view metric_name) {
     return true;
 }
 
-vector<string_view> LineProtocolParser::tokenize(string_view line) {
-    vector<string_view> tokens;
+vector<string> LineProtocolParser::tokenize(const string& line) {
+    vector<string> tokens;
     size_t i = 0;
 
     while (i < line.size()) {
@@ -291,13 +275,13 @@ vector<string_view> LineProtocolParser::tokenize(string_view line) {
     return tokens;
 }
 
-vector<string_view> LineProtocolParser::split_queries(string_view line) {
-    vector<string_view> queries;
+vector<string> LineProtocolParser::split_queries(const string& line) {
+    vector<string> queries;
     size_t start = 0;
 
     while (start <= line.size()) {
         size_t separator = line.find("&&", start);
-        if (separator == string_view::npos) {
+        if (separator == string::npos) {
             queries.push_back(line.substr(start));
             break;
         }
@@ -309,7 +293,7 @@ vector<string_view> LineProtocolParser::split_queries(string_view line) {
     return queries;
 }
 
-bool LineProtocolParser::parse_int64(string_view token, uint64_t& value) {
+bool LineProtocolParser::parse_int64(const string& token, uint64_t& value) {
     if (token.empty()) {
         return false;
     }
@@ -320,7 +304,7 @@ bool LineProtocolParser::parse_int64(string_view token, uint64_t& value) {
     return ec == errc() && ptr == end;
 }
 
-bool LineProtocolParser::parse_double(string_view token, double& value) {
+bool LineProtocolParser::parse_double(const string& token, double& value) {
     if (token.empty()) {
         return false;
     }
@@ -340,14 +324,14 @@ bool LineProtocolParser::parse_double(string_view token, double& value) {
     return true;
 }
 
-string LineProtocolParser::trim_carriage_return(string_view line) {
+string LineProtocolParser::trim_carriage_return(string& line) {
     if (!line.empty() && line.back() == '\r') {
-        line.remove_suffix(1);
+        line.pop_back();
     }
-    return string(line);
+    return line;
 }
 
-string_view LineProtocolParser::trim_whitespace(string_view line) {
+string LineProtocolParser::trim_whitespace(const string& line) {
     size_t start = 0;
     while (start < line.size() && is_space(line[start])) {
         ++start;
@@ -357,7 +341,6 @@ string_view LineProtocolParser::trim_whitespace(string_view line) {
     while (end > start && is_space(line[end - 1])) {
         --end;
     }
-
     return line.substr(start, end - start);
 }
 double mini(const vector<double>& arr){
@@ -417,8 +400,8 @@ pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) 
     chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
     uint64_t size = chunks.first.size();
     for(uint64_t i = 0;i<size;i++){
-        if(chunks.first[i] > this->to_timestamp) break;
-        if(chunks.first[i] >= from_timestamp){
+        if((chunks.first[i] >= from_timestamp) &&
+            (chunks.first[i] <= this->to_timestamp)){
             res.first.push_back(chunks.first[i]);
             res.second.push_back(chunks.second[i]);
         }
@@ -427,18 +410,18 @@ pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) 
 }
 pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
     pair<vector<uint64_t>, vector<double>> res;
+    
     pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
     chunks.first.insert(chunks.first.end(),hb.timestamps.begin(),hb.timestamps.end());
     chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
     uint64_t size = chunks.first.size();
     
     for(uint64_t i = 0;i<size;){
-        if(chunks.first[i] > this->to_timestamp) break;
         if((chunks.first[i] >= this->from_timestamp) &&
             (chunks.first[i] <= this->to_timestamp)){
             uint64_t last = chunks.first[i] + bucket_seconds;
             pair<vector<uint64_t>, vector<double>> res1;
-            while(chunks.first[i] <= last && i < size){
+            while(chunks.first[i] < last && i < size){
                 res1.first.push_back(chunks.first[i]);
                 res1.second.push_back(chunks.second[i]);
                 i++;
@@ -448,17 +431,24 @@ pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) 
             if(this->func == "sum"){
                 res.second.push_back(sum(res1.second));
             }
-            if(this->func == "avg"){
+            else if(this->func == "avg"){
+                for(int i = 0;i<res1.second.size();i++){
+                    cout << res1.second[i] << " ";
+                }
+                cout << endl;
                 res.second.push_back((sum(res1.second) / res1.first.size()));
             }
-            if(this->func == "min"){
+            else if(this->func == "min"){
                 res.second.push_back(mini(res1.second));
             }
-            if(this->func == "max"){
+            else if(this->func == "max"){
                 res.second.push_back(mixi(res1.second));
             }
-            if(this->func == "count"){
+            else if(this->func == "count"){
                 res.second.push_back(res1.first.size());
+            }
+            else{
+                res.first.pop_back();
             }
         }
     }

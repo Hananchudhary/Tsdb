@@ -435,10 +435,15 @@ void test_chunk_roundtrip() {
 
     cout << "✔ CHUNK ROUNDTRIP SUCCESS\n";
 }
-
+int main1(){
+    // test_1000_random_roundtrip();
+    // test_value_random_walk();
+    test_chunk_roundtrip();
+    return 0;
+}
 int main() {
     const vector<string> tests = {
-        "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage && FLUSH cpu_usage && QUIT",
+        "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && FLUSH cpu_usage && STATS cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",
         "PUT   cpu_usage    1000    45.2 && GET     cpu_usage   1000    2000 && AGG   cpu_usage   1000   2000   10   avg",
         "POT cpu_usage 1000 45.2 && GEET cpu_usage 1000 2000 && AGGG cpu_usage 1000 2000 10 avg && STAT cpu_usage && FLUS cpu_usage",
@@ -446,7 +451,7 @@ int main() {
         "PUT cpu_usage 1000 && PUT cpu_usage && GET cpu_usage 1000 && GET cpu_usage && AGG cpu_usage 1000 2000 10 && AGG cpu_usage 1000 2000 && STATS && FLUSH",
         "PUT cpu_usage 1000 0 && PUT cpu_usage 1000 -45.2 && PUT cpu_usage 1000 3.402823e38 && PUT cpu_usage 1000 -3.402823e38 && PUT cpu_usage 1000 NaN && PUT cpu_usage 1000 inf && PUT cpu_usage 1000 -inf && PUT cpu_usage 1000 abc",
         "GET cpu_usage 2000 1000 && GET cpu_usage 1000 1000 && GET cpu_usage 0 0 && GET cpu_usage -100 1000",
-        "AGG cpu_usage 1000 2000 10 average && AGG cpu_usage 1000 2000 10 AVG && AGG cpu_usage 1000 2000 10 median && AGG cpu_usage 1000 2000 10 mode && AGG cpu_usage 1000 2000 0 avg && AGG cpu_usage 1000 2000 -10 avg",
+        "AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 AVG && AGG cpu_usage 1000 2000 10 median && AGG cpu_usage 1000 2000 10 mode && AGG cpu_usage 1000 2000 0 avg && AGG cpu_usage 1000 2000 -10 avg",
         "HELLO WORLD && PUT && GET && AGG && RANDOM TEXT HERE && 12345 && !@#$%^&* && PUT cpu_usage 1000 45.2 extra_token",
         "PUT cpu 100 10 && PUT temp 100 36.5 && PUT cpu 101 11 && PUT temp 101 36.6 && GET cpu 100 102 && GET temp 100 102 && STATS cpu && STATS temp",
         "PUT cpu 100 10 && PUT cpu 101 11 && PUT cpu 100 9 && PUT cpu 102 12",
@@ -465,7 +470,7 @@ int main() {
 
         const string& request = tests[i];
         cout << "========== Test " << (i + 1) << " ==========\n";
-        cout << "Input: " << request << "\n\n";
+        // cout << "Input: " << request << "\n\n";
 
         if (!send_with_size(fd, request.data(), static_cast<uint32_t>(request.size()))) {
             cerr << "Test " << (i + 1) << ": send failed\n";

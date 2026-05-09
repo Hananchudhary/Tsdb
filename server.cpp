@@ -251,7 +251,8 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
     LineProtocolParser parser;
     vector<ParseResult> results = parser.parse_line(msg);
     if (parser.has_pending_data()) {
-        vector<ParseResult> flushed_results = parser.parse_line("\n");
+        string temp("\n");
+        vector<ParseResult> flushed_results = parser.parse_line(temp);
         results.insert(results.end(), flushed_results.begin(), flushed_results.end());
     }
 
@@ -265,8 +266,7 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
             has_error = true;
         }
         else{
-            if (holds_alternative<QuitCommand>(result.command->data)) {
-                cout << "2\n";
+            if (result.command && holds_alternative<QuitCommand>(result.command->data)) {
                 reply = reply  + static_cast<char>(MessageType::QUIT);
                 break;
             }
