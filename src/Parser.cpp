@@ -4,9 +4,11 @@
 #include <charconv>
 #include <cstdlib>
 #include <iostream>
+#include<algorithm>
 #include <limits>
 #include <string>
 #include<cstring>
+#include"compression.h"
 using namespace std;
 
 ParseResult make_error(string message, string_view line) {
@@ -358,40 +360,6 @@ string_view LineProtocolParser::trim_whitespace(string_view line) {
 
     return line.substr(start, end - start);
 }
-int PutCommand::handleRequest(HeadBlock& hb) const {
-    if (hb.timestamps.size() == hb.capacity) return -1;
-    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp)
-        return -2;
-
-    hb.timestamps.push_back(this->timestamp);
-    hb.values.push_back(this->value);
-    string dirPath = "./data/" + this->metric_name;
-    string filePath = dirPath + "/wal.bin";
-
-    filesystem::create_directories(dirPath);
-
-    ofstream file(filePath, ios::binary | ios::app);
-    if (!file.is_open()) return -3;
-
-    file.write(reinterpret_cast<const char*>(&this->timestamp), sizeof(this->timestamp));
-    file.write(reinterpret_cast<const char*>(&this->value), sizeof(this->value));
-
-    file.close();
-
-    return 0;
-}
-pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
-    int size = hb.timestamps.size(), i = 9;
-    pair<vector<uint64_t>, vector<double>> res;
-    for(int i = 0;i<size;i++){
-        if(hb.timestamps[i] > this->to_timestamp) break;
-        if(hb.timestamps[i] >= from_timestamp){
-            res.first.push_back(hb.timestamps[i]);
-            res.second.push_back(hb.values[i]);
-        }
-    }
-    return res;
-}
 double mini(const vector<double>& arr){
     double min = INT_FAST32_MAX;
     for(const double a : arr){
@@ -413,38 +381,83 @@ double sum(const vector<double>& arr){
     }
     return sum;
 }
+int PutCommand::handleRequest(HeadBlock& hb) const {
+    if (hb.timestamps.size() == hb.capacity){
+        FlushCommand fs;
+        fs.metric_name = this->metric_name;
+        if(!fs.handleRequest(hb)){
+            return -1;
+        }
+    }
+    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp)
+        return -2;
+
+    string dirPath = "./data/" + this->metric_name;
+    string filePath = dirPath + "/wal.bin";
+
+    filesystem::create_directories(dirPath);
+
+    ofstream file(filePath, ios::binary | ios::app);
+    if (!file.is_open()) return -3;
+
+    file.write(reinterpret_cast<const char*>(&this->timestamp), sizeof(this->timestamp));
+    file.write(reinterpret_cast<const char*>(&this->value), sizeof(this->value));
+
+    file.close();
+
+    hb.timestamps.push_back(this->timestamp);
+    hb.values.push_back(this->value);
+
+    return 0;
+}
+pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
+    pair<vector<uint64_t>, vector<double>> res;
+    pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
+    chunks.first.insert(chunks.first.end(),hb.timestamps.begin(),hb.timestamps.end());
+    chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
+    uint64_t size = chunks.first.size();
+    for(uint64_t i = 0;i<size;i++){
+        if(chunks.first[i] > this->to_timestamp) break;
+        if(chunks.first[i] >= from_timestamp){
+            res.first.push_back(chunks.first[i]);
+            res.second.push_back(chunks.second[i]);
+        }
+    }
+    return res;
+}
 pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
     pair<vector<uint64_t>, vector<double>> res;
-    int size = hb.timestamps.size(), i = 0;
-    for(int i = 0;i<size;i++){
-        if(hb.timestamps[i] > this->to_timestamp) break;
-        if(hb.timestamps[i] >= this->from_timestamp){
-            int last = hb.timestamps[i] + bucket_seconds;
+    pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
+    chunks.first.insert(chunks.first.end(),hb.timestamps.begin(),hb.timestamps.end());
+    chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
+    uint64_t size = chunks.first.size();
+    
+    for(uint64_t i = 0;i<size;){
+        if(chunks.first[i] > this->to_timestamp) break;
+        if((chunks.first[i] >= this->from_timestamp) &&
+            (chunks.first[i] <= this->to_timestamp)){
+            uint64_t last = chunks.first[i] + bucket_seconds;
             pair<vector<uint64_t>, vector<double>> res1;
-            while(hb.timestamps[i] > last && i < size){
-                res1.first.push_back(hb.timestamps[i]);
-                res1.second.push_back(hb.values[i]);
+            while(chunks.first[i] <= last && i < size){
+                res1.first.push_back(chunks.first[i]);
+                res1.second.push_back(chunks.second[i]);
                 i++;
             }
             if(res1.first.empty()) continue;
+            res.first.push_back(res1.first[0]);
             if(this->func == "sum"){
-                res.first.push_back(res1.first[0]);
                 res.second.push_back(sum(res1.second));
             }
             if(this->func == "avg"){
-                res.first.push_back(res1.first[0]);
-                res.second.push_back((sum(res1.second) / res.first.size()));
+                res.second.push_back((sum(res1.second) / res1.first.size()));
             }
             if(this->func == "min"){
-                res.first.push_back(res1.first[0]);
                 res.second.push_back(mini(res1.second));
             }
             if(this->func == "max"){
-                res.first.push_back(res1.first[0]);
                 res.second.push_back(mixi(res1.second));
             }
             if(this->func == "count"){
-                res.first.push_back(res1.first[0]);
                 res.second.push_back(res1.first.size());
             }
         }
@@ -453,15 +466,32 @@ pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) 
 }
 StatsResult StatsCommand::handleRequest(HeadBlock& hb) const{
     StatsResult res;
-    res.first_timestamp = hb.timestamps[0];
-    res.last_timestamp = hb.timestamps[hb.timestamps.size() - 1];
+    pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
+    res.on_disk = chunks.first.size();
+    chunks.first.insert(chunks.first.end(),hb.timestamps.begin(),hb.timestamps.end());
+    chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
+
+    res.first_timestamp = chunks.first[0];
+    res.last_timestamp = chunks.first[chunks.first.size() - 1];
     res.in_memory = hb.timestamps.size();
     res.metric_name = this->metric_name;
     res.total_points = res.on_disk + res.in_memory;
     return res;
 }
 bool FlushCommand::handleRequest(HeadBlock& hb) const{
-    hb.timestamps.clear();
-    hb.values.clear();
+    try{
+        string res = chunk_file_writer(&hb, this->metric_name);
+        if(res != ""){
+            cout << res << endl;
+            return false;
+        }
+        hb.timestamps.clear();
+        hb.values.clear();
+        return true;
+    }
+    catch(const exception e){
+        cout << e.what() << endl;
+        return false;
+    }
     return true;
 }

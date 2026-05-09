@@ -111,7 +111,7 @@ string get_result(const CommandData& command) {
         int res = put.handleRequest(hb);
         string response(1, static_cast<char>(MessageType::PUT));
         if(res == -1){
-            response = response + "Not enough memory, Flush First.";   
+            response = response + "Overflow flush error.";   
         }
         else if (res == -2){
             response = response + "Timestamp must be in non-decreasing.";   
@@ -266,6 +266,7 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
         }
         else{
             if (holds_alternative<QuitCommand>(result.command->data)) {
+                cout << "2\n";
                 reply = reply  + static_cast<char>(MessageType::QUIT);
                 break;
             }
@@ -273,6 +274,7 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
                 reply = reply + get_result(result.command->data);
             }
         }
+
         reply += '&';
 
     }

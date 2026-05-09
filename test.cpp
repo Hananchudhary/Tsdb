@@ -435,11 +435,8 @@ void test_chunk_roundtrip() {
 
     cout << "✔ CHUNK ROUNDTRIP SUCCESS\n";
 }
-int main(){
-    test_chunk_roundtrip();
-    return 0;
-}
-int main1() {
+
+int main() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage && FLUSH cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",
@@ -459,7 +456,6 @@ int main1() {
         "PUT cpu 100 10 && PUT cpu 200 20 && PUT cpu 150 15 && GET cpu 0 300",
         "PUT cpu 100 10 && QUIT && PUT cpu 101 11"
     };
-
     for (size_t i = 0; i < tests.size(); ++i) {
         int fd = connect_to_server();
         if (fd < 0) {

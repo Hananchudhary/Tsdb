@@ -352,6 +352,12 @@ vector<string> get_chunk_files(const string& dirPath) {
 
     return files;
 }
+template <typename T>
+T decode_le(string buf){
+    T u = 0;
+    memcpy(&u, buf.data(), buf.size());
+    return u;
+}
 pair<vector<uint64_t>, vector<double>>
 chunk_file_reader(const string& metric_name) {
 
@@ -383,8 +389,7 @@ chunk_file_reader(const string& metric_name) {
             // ---------------- VERSION ----------------
             string version_raw(4, '\0');
             read_and_crc(version_raw.data(), 4);
-
-            if ((version_raw) != 2)
+            if (decode_le<uint32_t>(version_raw) != 2)
                 continue;
 
             // ---------------- COUNT ----------------

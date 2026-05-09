@@ -166,7 +166,7 @@ int main() {
         return 1;
     }
 
-    string msg = "PUT cpu 100 10 && PUT cpu 101 11 && GET cpu 100 102";
+    string msg = "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage";
 
     if (!send_with_size(fd, msg.data(), msg.size())) {
         cerr << "send failed\n";
