@@ -4,9 +4,11 @@
 #include<variant>
 #include <cstring>
 #include"./src/Parser.h"
+#include"./src/compression.h"
 #include<sstream>
 #include <iostream>
 #include <string>
+#include<algorithm>
 #include<fstream>
 #include<filesystem>
 #include <thread>
@@ -20,9 +22,38 @@ using namespace std;
 namespace fs = filesystem;
 mutex registry_mutex;
 counting_semaphore<kMaxThreads> thread_limit(kMaxThreads);
-
+const string registeration_path = "./registerations.bin";
 unordered_map<string, HeadBlock> metric_registery;
-
+unordered_map<string, uint64_t> registery_time;
+void write_registeration_times(const string& path){
+    ofstream file(path, ios::binary);
+    if(!file.is_open()) return;
+    size_t size = registery_time.size();
+    file.write(reinterpret_cast<const char*>(&size), sizeof(size));
+    for(auto a : registery_time){
+        size = a.first.size();
+        file.write(reinterpret_cast<const char*>(&size),sizeof(size));
+        file.write(a.first.data(),a.first.size());
+        file.write(reinterpret_cast<const char*>(&a.second), sizeof(uint64_t));
+    }
+    file.close();
+}
+void read_registeration_times(const string& path){
+    ifstream file(path, ios::binary);
+    if(!file.is_open()) return;
+    size_t size = 0;
+    file.read(reinterpret_cast<char*>(&size), sizeof(size));
+    for(int i = 0;i<size;i++){
+        size_t s = 0;
+        file.read(reinterpret_cast<char*>(&size),sizeof(s));
+        string metric_name(s, '\0');
+        file.read(metric_name.data(),s);
+        uint64_t time = 0;
+        file.read(reinterpret_cast<char*>(&time), sizeof(uint64_t));
+        registery_time[metric_name] = time;
+    }
+    file.close();
+}
 bool initialize() {
     try {
         string basePath = "./data/";
@@ -63,7 +94,7 @@ bool initialize() {
             lock_guard<mutex> lock(registry_mutex);
             metric_registery[metric_name] = move(hb);
         }
-
+        read_registeration_times(registeration_path);
         cout << "System initialized\n";
         return true;
     }
@@ -109,6 +140,10 @@ string get_result(const CommandData& command) {
     if (holds_alternative<PutCommand>(command)) {
         const PutCommand& put = get<PutCommand>(command);
         if(metric_registery.count(put.metric_name) == 0){
+            uint64_t timestamp = chrono::duration_cast<chrono::milliseconds>(
+                chrono::system_clock::now().time_since_epoch()
+            ).count();
+            registery_time[put.metric_name] = timestamp;
             metric_registery[put.metric_name] = HeadBlock{};
         }
         HeadBlock& hb = metric_registery[put.metric_name];
@@ -310,7 +345,56 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
     close(client_fd);
     thread_limit.release();
 }
+void retention_cleaner_thread() {
 
+    while (true) {
+
+        this_thread::sleep_for(chrono::minutes(1));
+
+        uint64_t now = static_cast<uint64_t>(time(nullptr));
+        lock_guard<mutex> lock(registry_mutex);
+        
+
+        for (const auto& [metric_name, retention_seconds]
+             : registery_time) {
+
+            string dirPath = "./data/" + metric_name;
+
+            if (!fs::exists(dirPath))
+                continue;
+
+            uint64_t horizon =
+                now - retention_seconds;
+
+            vector<string> chunk_files =
+                get_chunk_files(dirPath);
+
+            for (const auto& path : chunk_files) {
+
+                try {
+
+                    uint64_t last_ts = get_last_timestamp_from_chunk(path);
+
+                    if (last_ts < horizon) {
+
+                        fs::remove(path);
+
+                        cout
+                            << "[Cleaner] Deleted expired chunk: "
+                            << path << endl;
+                    }
+
+                }
+                catch (...) {
+
+                    cout
+                        << "[Cleaner] Failed to process: "
+                        << path << endl;
+                }
+            }
+        }
+    }
+}
 int main() {
     signal(SIGPIPE, SIG_IGN);
 
@@ -342,6 +426,9 @@ int main() {
     if(!initialize()){
         return 1;
     }
+    // thread cleaner(retention_cleaner_thread);
+    // cleaner.detach();
+
     while (true) {
         sockaddr_in client_addr{};
         socklen_t len = sizeof(client_addr);
@@ -364,5 +451,6 @@ int main() {
     }
 
     close(server_fd);
+    write_registeration_times(registeration_path);
     return 0;
 }

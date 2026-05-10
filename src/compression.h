@@ -3,9 +3,11 @@
 #include<vector>
 #include<memory.h>
 #include"../include/helpers.h"
+#include<fstream>
+#include<algorithm>
 #include<filesystem>
 using namespace std;
-void bw_write(BitWriter* bw, uint64_t value, uint16_t n_bits) {
+inline void bw_write(BitWriter* bw, uint64_t value, uint16_t n_bits) {
     value = value << (64 - n_bits);
     while (n_bits > 0) {
         uint8_t free = (8 - bw->bits_filled);
@@ -23,7 +25,7 @@ void bw_write(BitWriter* bw, uint64_t value, uint16_t n_bits) {
         }
     }
 }
-uint64_t br_read (BitReader* br , uint16_t n_bits){
+inline uint64_t br_read (BitReader* br , uint16_t n_bits){
     uint64_t res = 0;
     while(n_bits > 0 && br->byte_index < br->buffer.size()){
         uint8_t x = br->buffer[br->byte_index];
@@ -41,22 +43,22 @@ uint64_t br_read (BitReader* br , uint16_t n_bits){
     }
     return res;
 }
-uint64_t encode_signed(int64_t x, int bits) {
+inline uint64_t encode_signed(int64_t x, int bits) {
     uint64_t mask = (1ULL << bits) - 1;
     return (uint64_t)x & mask;
 }
-int64_t decode_signed(uint64_t x, int bits) {
+inline int64_t decode_signed(uint64_t x, int bits) {
     uint64_t sign = 1ULL << (bits - 1);
     return (x ^ sign) - sign;
 }
-void bw_flush(BitWriter* bw) {
+inline void bw_flush(BitWriter* bw) {
     if (bw->bits_filled > 0) {
         bw->buffer.push_back(bw->current_byte);
         bw->current_byte = 0;
         bw->bits_filled = 0;
     }
 }
-void print_buffer(const vector<uint8_t>& buf) {
+inline void print_buffer(const vector<uint8_t>& buf) {
     for (auto b : buf) {
         for (int i = 7; i >= 0; i--) {
             cout << ((b >> i) & 1);
@@ -65,7 +67,7 @@ void print_buffer(const vector<uint8_t>& buf) {
     }
     cout << endl;
 }
-void timestamp_encode(BitWriter* bw, const vector<uint64_t>& timestamps){
+inline void timestamp_encode(BitWriter* bw, const vector<uint64_t>& timestamps){
     uint16_t size = timestamps.size();
     if(size == 0) return;
     bw_write(bw, timestamps[0], 64);
@@ -101,7 +103,7 @@ void timestamp_encode(BitWriter* bw, const vector<uint64_t>& timestamps){
     }
     bw_flush(bw);
 }
-uint8_t to_read(BitReader* br){
+inline uint8_t to_read(BitReader* br){
     uint64_t x = br_read(br, 1);
     if(x == 0) return 0;
     x = br_read(br, 1);
@@ -112,7 +114,7 @@ uint8_t to_read(BitReader* br){
     if(x == 0) return 12;
     return 32;
 }
-vector<uint64_t> timestamp_decode(BitReader* br, const uint16_t& N){
+inline vector<uint64_t> timestamp_decode(BitReader* br, const uint16_t& N){
     vector<uint64_t> time;
     if (N == 0) return time;
 
@@ -137,7 +139,7 @@ vector<uint64_t> timestamp_decode(BitReader* br, const uint16_t& N){
     }
     return time;
 }
-uint8_t find_leading_zeroes(const uint64_t& x){
+inline uint8_t find_leading_zeroes(const uint64_t& x){
     if(x == 0) return 0;
     uint8_t ct = 0;
     uint64_t a = 0x8000000000000000;
@@ -147,7 +149,7 @@ uint8_t find_leading_zeroes(const uint64_t& x){
     }
     return ct;
 }
-uint8_t find_trailing_zeroes(const uint64_t& x){
+inline uint8_t find_trailing_zeroes(const uint64_t& x){
     if(x == 0) return 0;
     uint8_t ct = 0;
     uint64_t a = 1;
@@ -157,7 +159,7 @@ uint8_t find_trailing_zeroes(const uint64_t& x){
     }
     return ct;
 }
-void value_encode(BitWriter* bw, const vector<double>& values){
+inline void value_encode(BitWriter* bw, const vector<double>& values){
     int size = values.size();
     if(size == 0) return;
 
@@ -210,7 +212,7 @@ void value_encode(BitWriter* bw, const vector<double>& values){
     }
     bw_flush(bw);
 }
-vector<double> value_decode(BitReader* br, const uint16_t& N){
+inline vector<double> value_decode(BitReader* br, const uint16_t& N){
     vector<double> vals;
     if (N == 0) return vals;
     uint64_t prev = br_read(br, 64);
@@ -272,14 +274,14 @@ vector<double> value_decode(BitReader* br, const uint16_t& N){
 
     return vals;
 }
-void crc_update(uint64_t& crc, const char* data, size_t len) {
+inline void crc_update(uint64_t& crc, const char* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
         for (int j = 0; j < 8; j++)
             crc = (crc >> 1) ^ (-(crc & 1) & 0xEDB8832002388BDE);
     }
 }
-string chunk_file_writer(HeadBlock* hb, const string& metric_name){
+inline string chunk_file_writer(HeadBlock* hb, const string& metric_name){
     if(hb->timestamps.size() == 0) return "Empty timestamps.";
     string dirPath = "./data/" + metric_name;
     string filePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".tmp";
@@ -333,7 +335,7 @@ string chunk_file_writer(HeadBlock* hb, const string& metric_name){
     }
     return "";
 }
-vector<string> get_chunk_files(const string& dirPath) {
+inline vector<string> get_chunk_files(const string& dirPath) {
     vector<string> files;
     if (!filesystem::exists(dirPath) || filesystem::is_empty(dirPath)) {
         return files;
@@ -352,7 +354,7 @@ vector<string> get_chunk_files(const string& dirPath) {
 
     return files;
 }
-uint64_t get_last_timestamp_from_chunk(const string& path) {
+inline uint64_t get_last_timestamp_from_chunk(const string& path) {
     ifstream file(path, ios::binary);
     if (!file.is_open()) return 0;
 
@@ -362,7 +364,7 @@ uint64_t get_last_timestamp_from_chunk(const string& path) {
     file.read(reinterpret_cast<char*>(&last_ts), sizeof(uint64_t));
     return last_ts;
 }
-pair<vector<uint64_t>, vector<double>>
+inline pair<vector<uint64_t>, vector<double>>
 chunk_file_reader(const string& metric_name) {
 
     pair<vector<uint64_t>, vector<double>> res;
