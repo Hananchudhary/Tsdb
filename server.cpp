@@ -13,10 +13,12 @@
 #include <unistd.h>
 #include <semaphore>
 #include <sys/socket.h>
+#include<mutex>
 
 #include<unordered_map>
 using namespace std;
 namespace fs = filesystem;
+mutex registry_mutex;
 counting_semaphore<kMaxThreads> thread_limit(kMaxThreads);
 
 unordered_map<string, HeadBlock> metric_registery;
@@ -58,6 +60,7 @@ bool initialize() {
 
                 file.close();
             }
+            lock_guard<mutex> lock(registry_mutex);
             metric_registery[metric_name] = move(hb);
         }
 
@@ -102,6 +105,7 @@ string serializeStats(const StatsResult& s) {
 }
 string get_result(const CommandData& command) {
     string res{};
+    lock_guard<mutex> lock(registry_mutex);
     if (holds_alternative<PutCommand>(command)) {
         const PutCommand& put = get<PutCommand>(command);
         if(metric_registery.count(put.metric_name) == 0){
@@ -239,56 +243,71 @@ void handle_client(int client_fd, sockaddr_in client_addr) {
 
     cout << "Client: " << ip << ":" << ntohs(client_addr.sin_port) << '\n';
 
-    string msg;
+    while (true) {
+        string msg;
 
-    if (!recv_with_size(client_fd, msg)) {
-        cerr << "recv failed\n";
-        close(client_fd);
-        thread_limit.release();
-        return;
-    }
-
-    LineProtocolParser parser;
-    vector<ParseResult> results = parser.parse_line(msg);
-    if (parser.has_pending_data()) {
-        string temp("\n");
-        vector<ParseResult> flushed_results = parser.parse_line(temp);
-        results.insert(results.end(), flushed_results.begin(), flushed_results.end());
-    }
-
-    string reply{};
-    bool has_error = false;
-    for (const ParseResult& result : results) {
-        if (!result.ok()) {
-            const ParseError& error = *result.error;
-            cerr << "Parse error: " << error.message << " | input: " << error.line << '\n';
-            reply = reply + static_cast<char>(MessageType::error) + error.message;
-            has_error = true;
-        }
-        else{
-            if (result.command && holds_alternative<QuitCommand>(result.command->data)) {
-                reply = reply  + static_cast<char>(MessageType::QUIT);
-                break;
-            }
-            else{
-                reply = reply + get_result(result.command->data);
-            }
+        if (!recv_with_size(client_fd, msg)) {
+            cerr << "Client disconnected\n";
+            break;
         }
 
-        reply += '&';
+        LineProtocolParser parser;
+        vector<ParseResult> results = parser.parse_line(msg);
 
-    }
-    if (results.empty() && !has_error) {
-        reply = "ERROR: empty request";
-    }
-    reply[reply.size() - 1] = '\0';
-    if (!send_with_size(client_fd, reply.data(), reply.size())) {
-        cerr << "send failed\n";
+        if (parser.has_pending_data()) {
+            string temp("\n");
+            vector<ParseResult> flushed_results = parser.parse_line(temp);
+            results.insert(results.end(),
+                           flushed_results.begin(),
+                           flushed_results.end());
+        }
+
+        string reply{};
+        bool has_error = false;
+
+        for (const ParseResult& result : results) {
+            if (!result.ok()) {
+                const ParseError& error = *result.error;
+
+                reply += static_cast<char>(MessageType::error);
+                reply += error.message;
+
+                has_error = true;
+            }
+            else {
+                if (result.command &&
+                    holds_alternative<QuitCommand>(result.command->data)) {
+
+                    reply += static_cast<char>(MessageType::QUIT);
+                    reply += "BYEE.";
+
+                    send_with_size(client_fd,
+                                   reply.data(),
+                                   reply.size());
+
+                    close(client_fd);
+                    thread_limit.release();
+                    return;
+                }
+
+                reply += get_result(result.command->data);
+            }
+
+            reply += '&';
+        }
+
+        if (!results.empty())
+            reply.back() = '\0';
+
+        if (!send_with_size(client_fd,
+                            reply.data(),
+                            reply.size())) {
+            cerr << "send failed\n";
+            break;
+        }
     }
 
     close(client_fd);
-    cout << "Client disconnected\n";
-
     thread_limit.release();
 }
 

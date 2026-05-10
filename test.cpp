@@ -445,7 +445,7 @@ int main() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && FLUSH cpu_usage && STATS cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",
-        "PUT   cpu_usage    1000    45.2 && GET     cpu_usage   1000    2000 && AGG   cpu_usage   1000   2000   10   avg",
+        "PUT   cpu_usage    1000    45.2 && PUT cpu_usage 1001 45.3 && GET     cpu_usage   1000    2000 && AGG   cpu_usage   1000   2000   10   avg",
         "POT cpu_usage 1000 45.2 && GEET cpu_usage 1000 2000 && AGGG cpu_usage 1000 2000 10 avg && STAT cpu_usage && FLUS cpu_usage",
         "PUT cpu_usage 1000 && PUT cpu_usage && GET cpu_usage 1000 && GET cpu_usage && AGG cpu_usage 1000 2000 10 && AGG cpu_usage 1000 2000 && STATS && FLUSH",
         "PUT cpu_usage 1000 && PUT cpu_usage && GET cpu_usage 1000 && GET cpu_usage && AGG cpu_usage 1000 2000 10 && AGG cpu_usage 1000 2000 && STATS && FLUSH",
@@ -459,7 +459,7 @@ int main() {
         "GET unknown 0 1000 && STATS unknown",
         "PUT cpu 100 abc && PUT cpu 100 NaN && PUT cpu 100 inf && PUT cpu 100 -inf",
         "PUT cpu 100 10 && PUT cpu 200 20 && PUT cpu 150 15 && GET cpu 0 300",
-        "PUT cpu 100 10 && QUIT && PUT cpu 101 11"
+        "PUT cpu 100 10 && PUT cpu 101 11 && flush cpu_usage"
     };
     for (size_t i = 0; i < tests.size(); ++i) {
         int fd = connect_to_server();

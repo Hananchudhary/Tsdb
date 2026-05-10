@@ -12,64 +12,74 @@ using namespace std;
 
 ssize_t recv_all(int socket_fd, void* data, size_t length) {
     char* buffer = static_cast<char*>(data);
-    size_t total = 0;
+    size_t total_received = 0;
 
-    while (total < length) {
-        ssize_t r = recv(socket_fd, buffer + total, length - total, 0);
-        
-        if (r < 0) {
-            if (errno == EINTR) continue;
+    while (total_received < length) {
+        ssize_t received = recv(socket_fd, buffer + total_received, length - total_received, 0);
+
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             return -1;
         }
 
-        if (r == 0) return 0;
+        if (received == 0) {
+            return 0;
+        }
 
-        total += r;
+        total_received += received;
     }
 
-    return total;
+    return static_cast<ssize_t>(total_received);
 }
 
 bool send_all(int socket_fd, const void* data, size_t length) {
-    const char* buf = (const char*)data;
-    size_t sent_total = 0;
+    const char* buffer = static_cast<const char*>(data);
+    size_t total_sent = 0;
 
-    while (sent_total < length) {
-        ssize_t s = send(socket_fd, buf + sent_total, length - sent_total, 0);
-
-        if (s < 0) {
-            if (errno == EINTR) continue;
+    while (total_sent < length) {
+        ssize_t sent = send(socket_fd, buffer + total_sent, length - total_sent, 0);
+        if (sent < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
             return false;
         }
 
-        if (s == 0) return false;
+        if (sent == 0) {
+            return false;
+        }
 
-        sent_total += s;
+        total_sent += sent;
     }
 
     return true;
 }
 
 bool send_with_size(int socket_fd, const void* data, uint32_t length) {
-    uint32_t net = htonl(length);
 
-    if (!send_all(socket_fd, &net, sizeof(net)))
+    uint32_t net_length = htonl(length);
+
+    if (!send_all(socket_fd, &net_length, sizeof(net_length))) {
         return false;
-
+    }
     return send_all(socket_fd, data, length);
 }
 
 bool recv_with_size(int socket_fd, string& out) {
-    uint32_t net = 0;
+    uint32_t net_length = 0;
 
-    if (recv_all(socket_fd, &net, sizeof(net)) <= 0)
+    if (recv_all(socket_fd, &net_length, sizeof(net_length)) <= 0) {
         return false;
+    }
 
-    uint32_t len = ntohl(net);
-    out.resize(len);
+    uint32_t length = ntohl(net_length);
+    out.resize(length);
 
-    return recv_all(socket_fd, out.data(), len) > 0;
+    return recv_all(socket_fd, out.data(), length) > 0;
 }
+
 void show_pair_result(string& response, int& i){
     uint64_t size;
     memcpy(&size, response.data() + i, sizeof(uint64_t));
@@ -82,7 +92,6 @@ void show_pair_result(string& response, int& i){
         memcpy(&val, response.data() + i, sizeof(double));
         i += sizeof(double);
         cout << "(" << value << " , " << val << ")\n";
-        
     }
 }
 string deserialize(const string& str, int& i, const char del){
@@ -93,7 +102,7 @@ string deserialize(const string& str, int& i, const char del){
         return "";
     }
 
-    string result = str.substr(i, pos - i+1);
+    string result = str.substr(i, pos - i + 1);
     i = pos + 1;
     return result;
 }
@@ -112,8 +121,6 @@ void show_stats_result(const string& str, int& i){
     cout << stoull(deserialize(str, i, ' ')) << endl;
     cout << deserialize(str, i, '=');
     cout << stoull(deserialize(str, i, ' ')) << endl;
-    cout << deserialize(str, i, '=');
-    cout << i << endl;
 }
 
 void show_result(string& response) {
@@ -158,29 +165,46 @@ int main() {
 
     if (inet_pton(AF_INET, kServerIp, &server.sin_addr) <= 0) {
         cerr << "inet_pton failed\n";
+        close(fd);
         return 1;
     }
 
     if (connect(fd, (sockaddr*)&server, sizeof(server)) < 0) {
         cerr << "connect failed\n";
+        close(fd);
         return 1;
     }
 
-    string msg = "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 avg && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && STATS cpu_usage";
+    cout << "Connected to TSDB server\n";
+    cout << "Type commands. Use QUIT to exit.\n";
 
-    if (!send_with_size(fd, msg.data(), msg.size())) {
-        cerr << "send failed\n";
-        return 1;
+    while (true) {
+        cout << "> ";
+        cout.flush();
+
+        string msg;
+        getline(cin, msg);
+
+        if (msg.empty())
+            continue;
+
+        if (!send_with_size(fd, msg.data(),(msg.size()))) {
+            cerr << "send failed\n";
+            break;
+        }
+
+        string response;
+        if (!recv_with_size(fd, response)) {
+            cerr << "recv failed\n";
+            break;
+        }
+
+        cout << "Server:\n";
+        show_result(response);
+
+        if (msg == "QUIT" || msg == "quit")
+            break;
     }
-
-    string response;
-
-    if (!recv_with_size(fd, response)) {
-        cerr << "recv failed\n";
-        return 1;
-    }
-    cout << "Server: \n";
-    show_result(response);
     close(fd);
     return 0;
 }

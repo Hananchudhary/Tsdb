@@ -372,11 +372,20 @@ int PutCommand::handleRequest(HeadBlock& hb) const {
             return -1;
         }
     }
-    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp)
-        return -2;
-
     string dirPath = "./data/" + this->metric_name;
     string filePath = dirPath + "/wal.bin";
+    if(hb.timestamps.empty()){
+
+        vector<string> files = get_chunk_files(dirPath);
+        if(!files.empty()){
+            string latest = files.back();
+            if(get_last_timestamp_from_chunk(latest) > this->timestamp){
+                return -2;
+            }
+        }
+    }
+    if (!hb.timestamps.empty() && hb.timestamps.back() > this->timestamp)
+        return -2;
 
     filesystem::create_directories(dirPath);
 
@@ -432,10 +441,6 @@ pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) 
                 res.second.push_back(sum(res1.second));
             }
             else if(this->func == "avg"){
-                for(int i = 0;i<res1.second.size();i++){
-                    cout << res1.second[i] << " ";
-                }
-                cout << endl;
                 res.second.push_back((sum(res1.second) / res1.first.size()));
             }
             else if(this->func == "min"){
@@ -465,6 +470,9 @@ StatsResult StatsCommand::handleRequest(HeadBlock& hb) const{
     res.last_timestamp = chunks.first[chunks.first.size() - 1];
     res.in_memory = hb.timestamps.size();
     res.metric_name = this->metric_name;
+    string dirPath = "./data/" + this->metric_name;
+    vector<string> files = get_chunk_files(dirPath);
+    res.disk_chunks = files.size();
     res.total_points = res.on_disk + res.in_memory;
     return res;
 }
@@ -477,6 +485,11 @@ bool FlushCommand::handleRequest(HeadBlock& hb) const{
         }
         hb.timestamps.clear();
         hb.values.clear();
+        string dirPath = "./data/" + this->metric_name;
+        string filePath = dirPath + "/wal.bin";
+        if(!filesystem::remove(filePath)){
+            cout << "filecould not deleted.\n";
+        }
         return true;
     }
     catch(const exception e){

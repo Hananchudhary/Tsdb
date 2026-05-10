@@ -335,7 +335,9 @@ string chunk_file_writer(HeadBlock* hb, const string& metric_name){
 }
 vector<string> get_chunk_files(const string& dirPath) {
     vector<string> files;
-
+    if (!filesystem::exists(dirPath) || filesystem::is_empty(dirPath)) {
+        return files;
+    }
     for (const auto& entry : filesystem::directory_iterator(dirPath)) {
         if (entry.is_regular_file()) {
             string path = entry.path().string();
@@ -349,6 +351,16 @@ vector<string> get_chunk_files(const string& dirPath) {
     sort(files.begin(), files.end());
 
     return files;
+}
+uint64_t get_last_timestamp_from_chunk(const string& path) {
+    ifstream file(path, ios::binary);
+    if (!file.is_open()) return 0;
+
+    file.seekg(20);
+
+    uint64_t last_ts = 0;
+    file.read(reinterpret_cast<char*>(&last_ts), sizeof(uint64_t));
+    return last_ts;
 }
 pair<vector<uint64_t>, vector<double>>
 chunk_file_reader(const string& metric_name) {

@@ -1,0 +1,176 @@
+========== Test 1 ==========
+Server:
+Inserted Successfully.
+Inserted Successfully.
+Inserted Successfully.
+(1000 , 45.2)
+(1001 , 45.3)
+(1000 , 45.2)
+(1000 , 45.3)
+(1000 , 90.5)
+(1000 , 2)
+Flushed Successfully.
+metric_name=cpu_usage 
+total_points=2
+in_memory=0
+on_disk=2
+disk_chunks=0
+first_timestamp=1000
+last_timestamp=1001
+
+========== Test 2 ==========
+Server:
+Inserted Successfully.
+Inserted Successfully.
+Inserted Successfully.
+(1 , 10)
+(2 , 20)
+(3 , 30)
+
+========== Test 3 ==========
+Server:
+Timestamp must be in non-decreasing.
+Inserted Successfully.
+(1000 , 45.2)
+(1001 , 45.3)
+(1001 , 45.3)
+(1000 , 45.2667)
+
+========== Test 4 ==========
+Server:
+unknown command type.
+unknown command type.
+unknown command type.
+unknown command type.
+unknown command type.
+
+========== Test 5 ==========
+Server:
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.
+GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.
+AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.
+AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.
+STATS expects 1 argument: STATS <metric_name>.
+FLUSH expects 1 argument: FLUSH <metric_name>.
+
+========== Test 6 ==========
+Server:
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.
+GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.
+AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.
+AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.
+STATS expects 1 argument: STATS <metric_name>.
+FLUSH expects 1 argument: FLUSH <metric_name>.
+
+========== Test 7 ==========
+Server:
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+invalid value format.
+
+========== Test 8 ==========
+Server:
+GET requires from_timestamp <= to_timestamp.
+(1000 , 45.2)
+invalid timestamp format.
+
+========== Test 9 ==========
+Server:
+(1000 , 45.2667)
+(1000 , 45.2667)
+not a valid function.
+not a valid function.
+bucket_seconds must be positive.
+invalid bucket_seconds format.
+
+========== Test 10 ==========
+Server:
+unknown command type.
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+GET expects 3 arguments: GET <metric_name> <from_timestamp> <to_timestamp>.
+AGG expects 5 arguments: AGG <metric_name> <from> <to> <bucket_seconds> <func>.
+unknown command type.
+unknown command type.
+unknown command type.
+PUT expects 3 arguments: PUT <metric_name> <timestamp> <value>.
+
+========== Test 11 ==========
+Server:
+Inserted Successfully.
+Inserted Successfully.
+Inserted Successfully.
+Inserted Successfully.
+(100 , 10)
+(101 , 11)
+(100 , 36.5)
+(101 , 36.6)
+metric_name=cpu 
+total_points=5
+in_memory=5
+on_disk=0
+disk_chunks=0
+first_timestamp=1
+last_timestamp=101
+metric_name=temp 
+total_points=2
+in_memory=2
+on_disk=0
+disk_chunks=0
+first_timestamp=100
+last_timestamp=101
+
+========== Test 12 ==========
+Server:
+Timestamp must be in non-decreasing.
+Inserted Successfully.
+Timestamp must be in non-decreasing.
+Inserted Successfully.
+
+========== Test 13 ==========
+Server:
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+(100 , 10)
+(101 , 11)
+(101 , 11)
+
+========== Test 14 ==========
+Server:
+No such metric exists.
+No such metric exists.
+
+========== Test 15 ==========
+Server:
+invalid value format.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+Timestamp must be in non-decreasing.
+
+========== Test 16 ==========
+Server:
+Timestamp must be in non-decreasing.
+Inserted Successfully.
+Timestamp must be in non-decreasing.
+(1 , 10)
+(2 , 20)
+(3 , 30)
+(100 , 10)
+(101 , 11)
+(101 , 11)
+(102 , 12)
+(200 , 20)
+
+========== Test 17 ==========
+Server:
+Timestamp must be in non-decreasing.
+
