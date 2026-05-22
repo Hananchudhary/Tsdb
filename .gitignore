@@ -1,5 +1,8 @@
 client
 server
+benchmark
 data/
 test
 .vscode
+naive_data.bin
+registerations.bin
