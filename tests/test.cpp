@@ -5,15 +5,19 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <filesystem>
+#include <thread>
 #include <unistd.h>
 #include <bits/stdc++.h>
 #include <sys/socket.h>
 
-#include "./include/helpers.h"
-#include "server_config.h"
-#include"./src/compression.h"
+#include "../include/helpers.h"
+#include "../server_config.h"
+#include"../src/compression.h"
 
 using namespace std;
+namespace fs = std::filesystem;
 
 ssize_t recv_all(int socket_fd, void* data, size_t length) {
     char* buffer = static_cast<char*>(data);
@@ -84,6 +88,18 @@ bool recv_with_size(int socket_fd, string& out) {
     out.resize(length);
 
     return recv_all(socket_fd, out.data(), length) > 0;
+}
+
+uint64_t parse_point_count_from_get_response(const string& response) {
+    if (response.empty() ||
+        response[0] != static_cast<char>(MessageType::GET) ||
+        response.size() < 1 + sizeof(uint64_t)) {
+        return numeric_limits<uint64_t>::max();
+    }
+
+    uint64_t count = 0;
+    memcpy(&count, response.data() + 1, sizeof(uint64_t));
+    return count;
 }
 
 void show_pair_result(string& response, int& i){
@@ -440,13 +456,107 @@ void test_chunk_roundtrip() {
 
     cout << "✔ CHUNK ROUNDTRIP SUCCESS\n";
 }
-int main1(){
-    // test_1000_random_roundtrip();
-    // test_value_random_walk();
+void test_cleaner_thread() {
+    cout << "=== CLEANER THREAD TEST ===\n";
+
+    const string metric = "temperature";
+    const string metric_dir = "./data/" + metric;
+
+    if (fs::exists(metric_dir)) {
+        fs::remove_all(metric_dir);
+    }
+
+    int fd = connect_to_server();
+    if (fd < 0) {
+        cout << "⚠ Cleaner test skipped: server is not running\n";
+        return;
+    }
+
+    const uint64_t now = static_cast<uint64_t>(time(nullptr));
+    const uint64_t from_ts = now - 30;
+    const uint64_t to_ts = now - 21;
+
+    stringstream ss;
+    for (uint64_t ts = from_ts; ts <= to_ts; ++ts) {
+        if (ts != from_ts) ss << " && ";
+        ss << "PUT " << metric << " " << ts << " " << (36.5 + (ts - from_ts) * 0.1);
+    }
+    ss << " && FLUSH " << metric;
+
+    const string write_request = ss.str();
+    if (!send_with_size(fd, write_request.data(),
+                        static_cast<uint32_t>(write_request.size()))) {
+        cout << "❌ Cleaner test failed: could not send expired test data\n";
+        close(fd);
+        return;
+    }
+
+    string response;
+    if (!recv_with_size(fd, response)) {
+        cout << "❌ Cleaner test failed: no response for write request\n";
+        close(fd);
+        return;
+    }
+
+    vector<string> chunks = get_chunk_files(metric_dir);
+    if (chunks.empty()) {
+        cout << "❌ Cleaner test failed: flush did not create any chunk files\n";
+        close(fd);
+        return;
+    }
+
+    cout << "Created " << chunks.size()
+         << " expired chunk(s); waiting for cleaner cycle...\n";
+
+    this_thread::sleep_for(chrono::seconds(70));
+
+    vector<string> remaining_chunks = get_chunk_files(metric_dir);
+    if (!remaining_chunks.empty()) {
+        cout << "❌ Cleaner test failed: expired chunks still exist after cleaner cycle\n";
+        close(fd);
+        return;
+    }
+
+    const string get_request =
+        "GET " + metric + " " + to_string(from_ts) + " " + to_string(to_ts);
+    if (!send_with_size(fd, get_request.data(),
+                        static_cast<uint32_t>(get_request.size()))) {
+        cout << "❌ Cleaner test failed: could not send verification GET\n";
+        close(fd);
+        return;
+    }
+
+    string get_response;
+    if (!recv_with_size(fd, get_response)) {
+        cout << "❌ Cleaner test failed: no response for verification GET\n";
+        close(fd);
+        return;
+    }
+
+    uint64_t point_count = parse_point_count_from_get_response(get_response);
+    if (point_count == numeric_limits<uint64_t>::max()) {
+        cout << "❌ Cleaner test failed: unexpected GET response format\n";
+        close(fd);
+        return;
+    }
+    if (point_count != 0) {
+        cout << "❌ Cleaner test failed: expected 0 points after cleanup, got "
+             << point_count << "\n";
+        close(fd);
+        return;
+    }
+
+    cout << "✔ Cleaner removed expired chunks and GET returned no points\n";
+    close(fd);
+}
+int main(){
+    test_1000_random_roundtrip();
+    test_value_random_walk();
     test_chunk_roundtrip();
+    test_cleaner_thread();
     return 0;
 }
-int main() {
+int main1() {
     const vector<string> tests = {
         "PUT cpu_usage 1000 45.2 && PUT cpu_usage 1001 45.3 && PUT temperature 2000 36.6 && GET cpu_usage 1000 2000 && AGG cpu_usage 1000 2000 10 min && AGG cpu_usage 1000 2000 10 max && AGG cpu_usage 1000 2000 10 sum && AGG cpu_usage 1000 2000 10 count && FLUSH cpu_usage && STATS cpu_usage && QUIT",
         "PUT cpu 1 10.0 && PUT cpu 2 20.0 && PUT cpu 3 30.0 && GET cpu 1 3",

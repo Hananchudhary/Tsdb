@@ -11,11 +11,11 @@ server: server.cpp src/Parser.cpp
 client: client.cpp
 	$(CXX) $(CXXFLAGS) -o $@ client.cpp
 
-test: test.cpp src/Parser.cpp
-	$(CXX) $(CXXFLAGS) -o $@ test.cpp src/Parser.cpp $(LDFLAGS)
+test: tests/test.cpp src/Parser.cpp
+	$(CXX) $(CXXFLAGS) -o $@ tests/test.cpp src/Parser.cpp $(LDFLAGS)
 
-benchmark: benchmark.cpp src/Parser.cpp
-	$(CXX) $(CXXFLAGS) -o $@ benchmark.cpp src/Parser.cpp $(LDFLAGS)
+benchmark: benchmarks/benchmark.cpp src/Parser.cpp
+	$(CXX) $(CXXFLAGS) -o $@ benchmarks/benchmark.cpp src/Parser.cpp $(LDFLAGS)
 
 # Clean build artifacts
 clean:

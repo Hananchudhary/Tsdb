@@ -426,8 +426,8 @@ int main() {
     if(!initialize()){
         return 1;
     }
-    // thread cleaner(retention_cleaner_thread);
-    // cleaner.detach();
+    thread cleaner(retention_cleaner_thread);
+    cleaner.detach();
 
     while (true) {
         sockaddr_in client_addr{};

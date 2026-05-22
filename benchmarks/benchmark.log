@@ -1,0 +1,71 @@
+╔══════════════════════════════════════════════════════════╗
+║           TSDB Benchmark Suite                          ║
+╚══════════════════════════════════════════════════════════╝
+
+Generating 500000 data points across 10 metrics...
+✓ Data generated in 0.028 seconds
+
+Cleaning data directory...
+✓ Data directory cleaned
+
+Connecting to TSDB server...
+✓ Connected to server
+
+Inserting 500000 points via PUT...
+  Progress: 50000/500000 points (10%)
+  Progress: 100000/500000 points (20%)
+  Progress: 150000/500000 points (30%)
+  Progress: 200000/500000 points (40%)
+  Progress: 250000/500000 points (50%)
+  Progress: 300000/500000 points (60%)
+  Progress: 350000/500000 points (70%)
+  Progress: 400000/500000 points (80%)
+  Progress: 450000/500000 points (90%)
+  Progress: 500000/500000 points (100%)
+✓ All points inserted
+  Time: 416.732 seconds
+  Throughput: 1200 points/second
+
+Flushing all metrics...
+✓ All metrics flushed in 0.825 seconds
+
+Disk usage (TSDB compressed):
+  Total: 804.76 KB (824078 bytes)
+  metric_0: 80.75 KB (82690 bytes)
+  metric_1: 80.25 KB (82171 bytes)
+  metric_2: 80.13 KB (82058 bytes)
+  metric_3: 80.81 KB (82746 bytes)
+  metric_4: 80.27 KB (82200 bytes)
+  metric_5: 80.51 KB (82438 bytes)
+  metric_6: 80.45 KB (82376 bytes)
+  metric_7: 80.91 KB (82856 bytes)
+  metric_8: 80.36 KB (82285 bytes)
+  metric_9: 80.33 KB (82258 bytes)
+
+Generating naive format file (16 bytes/point)...
+✓ Naive file created: 7.63 MB (8000000 bytes)
+
+╔══════════════════════════════════════════════════════════╗
+║                  BENCHMARK RESULTS                     ║
+╚══════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────┐
+│ Metric                    │ Value                       │
+├───────────────────────────┼─────────────────────────────┤
+│ Total Points              │                    500000 │
+│ Number of Metrics         │                        10 │
+├───────────────────────────┼─────────────────────────────┤
+│ Insert Throughput         │                  1200 pts/s │
+│ Insert Time               │                416.732 sec │
+│ Flush Time                │                  0.825 sec │
+├───────────────────────────┼─────────────────────────────┤
+│ Naive Format (16B/pt)     │               7.63 MB │
+│ TSDB Compressed           │             804.76 KB │
+├───────────────────────────┼─────────────────────────────┤
+│ Compression Ratio         │                  9.71x │
+│ Space Saved               │               6.84 MB │
+│ Space Reduction           │                 89.7% │
+└───────────────────────────┴─────────────────────────────┘
+
+Benchmark complete!
+Note: Data files preserved in ./data/ and ./naive_data.bin.

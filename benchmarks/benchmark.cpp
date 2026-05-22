@@ -13,9 +13,9 @@
 #include <unistd.h>
 #include <vector>
 
-#include "./include/helpers.h"
-#include "./src/compression.h"
-#include "server_config.h"
+#include "../include/helpers.h"
+#include "../src/compression.h"
+#include "../server_config.h"
 
 using namespace std;
 namespace fs = filesystem;
