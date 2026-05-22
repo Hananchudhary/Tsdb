@@ -109,15 +109,15 @@ vector<DataPoint> generate_synthetic_data(int total_points, int num_metrics) {
     mt19937_64 rng(42);  // Fixed seed for reproducibility
 
     for (int m = 0; m < num_metrics; ++m) {
-        double current_value = 1000.0 + (rng() % 1000);
+        double current_value = (rng() % 20);
 
         for (int p = 0; p < points_per_metric; ++p) {
             DataPoint dp;
             dp.metric_name = metric_names[m];
-            dp.timestamp = 1000000 + p;  // 1-second intervals starting at 1000000
+            dp.timestamp = 100 + p;  // 1-second intervals starting at 1000000
 
-            // Slowly drifting random walk
-            double drift = ((rng() % 2001) - 1000) / 1000.0;  // -1.0 to +1.0
+            double drift = ((rng() % 21) - 10) / 1000000000000000.0;
+
             current_value += drift;
             dp.value = current_value;
 

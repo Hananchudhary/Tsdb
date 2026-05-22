@@ -26,7 +26,6 @@ bool is_space(char ch) {
 
 
 bool LineProtocolParser::has_pending_data() const {
-    cout << buffer_ << endl;
     return !buffer_.empty();
 }
 

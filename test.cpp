@@ -315,13 +315,14 @@ void test_value_random_walk() {
     // 1. Generate slowly drifting random walk
     double current = 1000.0;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1000; i++) {
         input.push_back(current);
 
         // small drift: -1.0 to +1.0
         double step = ((rand() % 2001) - 1000) / 1000.0;
-        if(i % 10 == 0)
+        if(i % 100 == 0) {
             input.push_back(-1 * current);
+        }
         current += step;
     }
     char* parsed = nullptr;
@@ -343,14 +344,18 @@ void test_value_random_walk() {
         return;
     }
 
-    // 5. Compare values (with tolerance for floating point)
-    const double EPS = 1e-9;
-
+    // 5. Compare exact bit patterns so NaN/Inf and sign bits are validated too.
     for (size_t i = 0; i < input.size(); i++) {
-        if (fabs(input[i] - output[i]) > EPS) {
+        uint64_t expected_bits = 0;
+        uint64_t got_bits = 0;
+        memcpy(&expected_bits, &input[i], sizeof(double));
+        memcpy(&got_bits, &output[i], sizeof(double));
+        if (expected_bits != got_bits) {
             cout << "❌ Mismatch at index " << i << "\n";
             cout << "Expected: " << input[i]
                  << " Got: " << output[i] << "\n";
+            cout << "Expected bits: " << expected_bits
+                 << " Got bits: " << got_bits << "\n";
 
             // context window for debugging
             int start = max(0, (int)i - 5);

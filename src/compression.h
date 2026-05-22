@@ -159,117 +159,175 @@ inline uint8_t find_trailing_zeroes(const uint64_t& x){
     }
     return ct;
 }
-inline void value_encode(BitWriter* bw, const vector<double>& values){
+inline void value_encode(BitWriter* bw,
+                         const vector<double>& values) {
     int size = values.size();
-    if(size == 0) return;
 
-    uint64_t b = 0;
-    memcpy(&b, &values[0], sizeof(double));
-    bw_write(bw, b, 64);
-    uint8_t prev_lead = find_leading_zeroes(b);
-    uint8_t prev_trail = find_trailing_zeroes(b);
+    if (size == 0) return;
 
-    for(int i = 1;i<size;i++){
-        uint64_t a = 0;
-        memcpy(&a, &values[i], sizeof(double));
-        uint64_t x = a ^ b;
-        if(x == 0){
+    uint64_t prev_bits = 0;
+    memcpy(&prev_bits, &values[0], sizeof(double));
+
+    // Store first value raw
+    bw_write(bw, prev_bits, 64);
+
+    uint8_t prev_lead = 0;
+    uint8_t prev_trail = 0;
+
+    bool has_prev_block = false;
+
+    for (int i = 1; i < size; i++) {
+        uint64_t curr_bits = 0;
+        memcpy(&curr_bits, &values[i], sizeof(double));
+
+        uint64_t x = curr_bits ^ prev_bits;
+
+        // Case 1: identical value
+        if (x == 0) {
             bw_write(bw, 0b0, 1);
+            prev_bits = curr_bits;
             continue;
         }
+
         uint8_t lead = find_leading_zeroes(x);
         uint8_t trail = find_trailing_zeroes(x);
-        
-        
-        if(lead >= prev_lead && trail >= prev_trail){
+
+        // Case 2: reuse previous block
+        if (has_prev_block &&
+            lead >= prev_lead &&
+            trail >= prev_trail) {
+
             bw_write(bw, 0b10, 2);
 
-            uint8_t n = 64 - prev_lead - prev_trail;
-            x = x >> prev_trail;
-    //         cout << "ENC i=" << i
-    //  << " n=" << (int)n
-    //  << " lead=" << (int)prev_lead
-    //  << " trail=" << (int)prev_trail
-    //  << endl;
-            bw_write(bw, x, n);
+            uint8_t n =
+                64 - prev_lead - prev_trail;
+
+            uint64_t meaningful =
+                x >> prev_trail;
+
+            bw_write(bw, meaningful, n);
         }
-        else{
+
+        // Case 3: new block
+        else {
             bw_write(bw, 0b11, 2);
+
             bw_write(bw, lead, 5);
-            uint8_t n = 64 - lead - trail;
-            bw_write(bw, n, 6);
-            x = x >> trail;
-    //         cout << "ENC i=" << i
-    //  << " n=" << (int)n
-    //  << " lead=" << (int)lead
-    //  << " trail=" << (int)trail
-    //  << endl;
-            bw_write(bw, x, n);
+
+            uint8_t n =
+                64 - lead - trail;
+
+            // Gorilla convention:
+            // stored 0 means 64 meaningful bits
+            uint8_t stored_n =
+                (n == 64) ? 0 : n;
+
+            bw_write(bw, stored_n, 6);
+
+            uint64_t meaningful =
+                x >> trail;
+
+            bw_write(bw, meaningful, n);
+
+            prev_lead = lead;
+            prev_trail = trail;
+
+            has_prev_block = true;
         }
-        prev_lead = lead;
-        prev_trail = trail;
-        b = a;
+
+        prev_bits = curr_bits;
     }
+
     bw_flush(bw);
 }
-inline vector<double> value_decode(BitReader* br, const uint16_t& N){
+inline vector<double> value_decode(BitReader* br,
+                                   const uint16_t& N) {
     vector<double> vals;
-    if (N == 0) return vals;
-    uint64_t prev = br_read(br, 64);
+
+    if (N == 0)
+        return vals;
+
+    // First value stored raw
+    uint64_t prev_bits = br_read(br, 64);
+
     double v;
-    memcpy(&v, &prev, sizeof(double));
+    memcpy(&v, &prev_bits, sizeof(double));
+
     vals.push_back(v);
 
-    if (N == 1) return vals;
+    if (N == 1)
+        return vals;
 
-    uint8_t prev_lead = find_leading_zeroes(prev);
-    uint8_t prev_trail = find_trailing_zeroes(prev);
+    uint8_t prev_lead = 0;
+    uint8_t prev_trail = 0;
+
+    bool has_prev_block = false;
 
     for (int i = 1; i < N; i++) {
+
+        // First control bit
         uint8_t ctrl = br_read(br, 1);
 
+        // Case 0: identical value
         if (ctrl == 0) {
             vals.push_back(v);
             continue;
         }
 
-        uint64_t curr_bits = 0;
+        uint64_t x = 0;
 
-        if (br_read(br, 1) == 0) {
-            uint8_t n = 64 - prev_lead - prev_trail;
-            curr_bits = br_read(br, n);
-    //         cout << "ENC i=" << i
-    //  << " n=" << (int)n
-    //  << " lead=" << (int)prev_lead
-    //  << " trail=" << (int)prev_trail
-    //  << endl;
-            curr_bits <<= prev_trail;
-            prev_lead = find_leading_zeroes(curr_bits);
-            prev_trail = find_trailing_zeroes(curr_bits);
+        // Second control bit
+        uint8_t second = br_read(br, 1);
 
-        } 
-        else {
-            uint8_t lead = br_read(br, 5);
-            uint8_t n = br_read(br, 6);
-            uint8_t trail = 64 - lead - n;
+        // Case 10: reuse previous block
+        if (second == 0) {
 
-            curr_bits = br_read(br, n);
-    //         cout << "ENC i=" << i
-    //  << " n=" << (int)n
-    //  << " lead=" << (int)lead
-    //  << " trail=" << (int)trail
-    //  << endl;
-            curr_bits <<= trail;
-            prev_lead = lead;
-            prev_trail = trail;
+            uint8_t n =
+                64 - prev_lead - prev_trail;
+
+            x = br_read(br, n);
+
+            x <<= prev_trail;
         }
 
-        uint64_t val_bits = prev ^ curr_bits;
+        // Case 11: new block
+        else {
 
-        memcpy(&v, &val_bits, sizeof(double));
+            uint8_t lead = br_read(br, 5);
+
+            uint8_t stored_n =
+                br_read(br, 6);
+
+            // Gorilla convention:
+            // stored 0 means 64 bits
+            uint8_t n =
+                (stored_n == 0)
+                ? 64
+                : stored_n;
+
+            uint8_t trail =
+                64 - lead - n;
+
+            x = br_read(br, n);
+
+            x <<= trail;
+
+            prev_lead = lead;
+            prev_trail = trail;
+
+            has_prev_block = true;
+        }
+
+        uint64_t curr_bits =
+            prev_bits ^ x;
+
+        memcpy(&v,
+               &curr_bits,
+               sizeof(double));
+
         vals.push_back(v);
 
-        prev = val_bits;
+        prev_bits = curr_bits;
     }
 
     return vals;
