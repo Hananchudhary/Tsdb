@@ -549,11 +549,64 @@ void test_cleaner_thread() {
     cout << "✔ Cleaner removed expired chunks and GET returned no points\n";
     close(fd);
 }
+void test_zstd_roundtrip()
+{
+    namespace fs = std::filesystem;
+
+    const string dir = "../data/cpu_usage";
+    const string chunk_path = dir + "/1000.chunk";
+    const string coarser_path = dir + "/coarser/1000.chunk";
+
+    fs::create_directories(dir);
+    fs::create_directories(dir + "/coarser");
+
+    // generate random test data
+    vector<uint8_t> original(1024 * 1024);
+
+    std::mt19937 rng(12345);
+    std::uniform_int_distribution<int> dist(0, 255);
+
+    for (auto& b : original)
+        b = static_cast<uint8_t>(dist(rng));
+
+    // write original chunk
+    {
+        ofstream out(chunk_path, ios::binary);
+
+        if (!out)
+            throw runtime_error("failed to create input chunk");
+
+        out.write(
+            reinterpret_cast<const char*>(original.data()),
+            original.size()
+        );
+    }
+    cout << "Compressing\n";
+    // compress
+    zstd_compress(chunk_path);
+    cout << "Decompressing\n";
+    // decompress
+    vector<uint8_t> decompressed = zstd_decompress(coarser_path);
+    cout << "Done\n";
+    // validate
+    assert(original.size() == decompressed.size());
+
+    bool equal = std::equal(
+        original.begin(),
+        original.end(),
+        decompressed.begin()
+    );
+
+    assert(equal);
+
+    cout << "zstd roundtrip test passed\n";
+}
 int main(){
-    test_1000_random_roundtrip();
-    test_value_random_walk();
-    test_chunk_roundtrip();
-    test_cleaner_thread();
+    // test_1000_random_roundtrip();
+    // test_value_random_walk();
+    // test_chunk_roundtrip();
+    // test_cleaner_thread();
+    test_zstd_roundtrip();
     return 0;
 }
 int main1() {

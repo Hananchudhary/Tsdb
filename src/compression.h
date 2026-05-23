@@ -7,6 +7,7 @@
 #include<algorithm>
 #include<filesystem>
 using namespace std;
+namespace fs = filesystem;
 inline void bw_write(BitWriter* bw, uint64_t value, uint16_t n_bits) {
     value = value << (64 - n_bits);
     while (n_bits > 0) {
@@ -159,8 +160,7 @@ inline uint8_t find_trailing_zeroes(const uint64_t& x){
     }
     return ct;
 }
-inline void value_encode(BitWriter* bw,
-                         const vector<double>& values) {
+inline void value_encode(BitWriter* bw, const vector<double>& values) {
     int size = values.size();
 
     if (size == 0) return;
@@ -240,8 +240,7 @@ inline void value_encode(BitWriter* bw,
 
     bw_flush(bw);
 }
-inline vector<double> value_decode(BitReader* br,
-                                   const uint16_t& N) {
+inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
     vector<double> vals;
 
     if (N == 0)
@@ -344,7 +343,7 @@ inline string chunk_file_writer(HeadBlock* hb, const string& metric_name){
     string dirPath = "./data/" + metric_name;
     string filePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".tmp";
 
-    filesystem::create_directories(dirPath);
+    fs::create_directories(dirPath);
 
     ofstream file(filePath, ios::binary);
     if (!file.is_open()) return "Cannot open the file.";
@@ -386,19 +385,19 @@ inline string chunk_file_writer(HeadBlock* hb, const string& metric_name){
     file.close();
     string newfilePath = dirPath + "/" + to_string(hb->timestamps[0])  + ".chunk";
     try {
-        filesystem::rename(filePath, newfilePath);
+        fs::rename(filePath, newfilePath);
         return "";
-    } catch (const filesystem::filesystem_error& e) {
+    } catch (const fs::filesystem_error& e) {
         return "Rename Error.";
     }
     return "";
 }
 inline vector<string> get_chunk_files(const string& dirPath) {
     vector<string> files;
-    if (!filesystem::exists(dirPath) || filesystem::is_empty(dirPath)) {
+    if (!fs::exists(dirPath) || fs::is_empty(dirPath)) {
         return files;
     }
-    for (const auto& entry : filesystem::directory_iterator(dirPath)) {
+    for (const auto& entry : fs::directory_iterator(dirPath)) {
         if (entry.is_regular_file()) {
             string path = entry.path().string();
 
@@ -422,8 +421,7 @@ inline uint64_t get_last_timestamp_from_chunk(const string& path) {
     file.read(reinterpret_cast<char*>(&last_ts), sizeof(uint64_t));
     return last_ts;
 }
-inline pair<vector<uint64_t>, vector<double>>
-chunk_file_reader(const string& metric_name) {
+inline pair<vector<uint64_t>, vector<double>> chunk_file_reader(const string& metric_name) {
 
     pair<vector<uint64_t>, vector<double>> res;
 
@@ -523,6 +521,117 @@ chunk_file_reader(const string& metric_name) {
         }
         catch (...) {
             cout << "Unknown fatal error\n";
+        }
+    }
+
+    return res;
+}
+inline void zstd_compress(const string& last_chunk){
+    ifstream file(last_chunk, ios::binary | ios::ate);
+
+    if (!file){
+        cout << "Failed to open file\n";
+        return;
+    }
+
+    streamsize size = file.tellg();
+    file.seekg(0, ios::beg);
+
+    vector<uint8_t> buffer(size);
+
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)){
+        cout << "Failed to read file\n";
+        return;
+    }
+    BitWriter bw;
+    const int window = 16;
+    uint32_t i = 0;
+    bw_write(&bw, size, 64);
+    while(i < window && i < size){
+        bw_write(&bw, buffer[i], 8);
+        i++;
+    }
+    while(i < size){
+        uint32_t max_offset = 0, max_len = 0;
+        for(uint32_t j = i - 1; j > i - window;j--){
+            uint32_t k = j, h = i;
+            uint32_t matched = 0;
+            while(buffer[h] == buffer[k] && k < i){
+                matched++;
+                h++;
+                k++;
+            }
+            if(matched > max_len){
+                max_len = matched;
+                max_offset = i - j;
+            }
+        }
+        if(max_len > 2){
+            bw_write(&bw, 0b1, 1);
+            bw_write(&bw, max_len, 6);
+            cout << to_string(i) << " " << to_string(max_offset) << " " << to_string(max_len) << endl;
+            
+            bw_write(&bw, max_offset, 6);
+            i+=max_len;
+        }
+        else{
+            bw_write(&bw, 0b0, 1);
+            bw_write(&bw, buffer[i], 8);
+            i++;
+        }
+    }
+    bw_flush(&bw);
+    fs::path p(last_chunk);
+    string coarser_path = (p.parent_path() / "coarser" / p.filename()).string();
+    ofstream fw(coarser_path, ios::binary);
+    fw.write(reinterpret_cast<const char*>(bw.buffer.data()), bw.buffer.size());
+}
+inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {
+    std::ifstream file(input_path, std::ios::binary | std::ios::ate);
+    std::vector<uint8_t> res;
+
+    if (!file) {
+        std::cout << "Failed to open file\n";
+        return res;
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> buffer(size);
+
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+        std::cout << "Failed to read file\n";
+        return res;
+    }
+
+    BitReader br(buffer);
+
+    // ===== READ HEADER =====
+    uint32_t original_size = br_read(&br, 32);
+
+    const int window = 16;
+
+    // bootstrap first literals
+    for (int i = 0; i < window && res.size() < original_size; i++) {
+        res.push_back(br_read(&br, 8));
+    }
+
+    while (res.size() < original_size) {
+        uint8_t flag = br_read(&br, 1);
+
+        if (flag == 0) {
+            uint8_t lit = br_read(&br, 8);
+            res.push_back(lit);
+        } else {
+            uint32_t len = br_read(&br, 6);
+            uint32_t off = br_read(&br, 6);
+
+            uint32_t start = res.size() - off;
+
+            for (uint32_t j = 0; j < len && res.size() < original_size; j++) {
+                res.push_back(res[start + j]);
+            }
         }
     }
 

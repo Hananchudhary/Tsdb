@@ -449,7 +449,7 @@ int main() {
             handle_client(client_fd, client_addr);
         }).detach();
     }
-
+    cout << "BYEEE\n";
     close(server_fd);
     write_registeration_times(registeration_path);
     return 0;
