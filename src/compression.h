@@ -168,8 +168,6 @@ inline void value_encode(BitWriter* bw, const vector<double>& values) {
 
     uint64_t prev_bits = 0;
     memcpy(&prev_bits, &values[0], sizeof(double));
-
-    // Store first value raw
     bw_write(bw, prev_bits, 64);
 
     uint8_t prev_lead = 0;
@@ -182,8 +180,6 @@ inline void value_encode(BitWriter* bw, const vector<double>& values) {
         memcpy(&curr_bits, &values[i], sizeof(double));
 
         uint64_t x = curr_bits ^ prev_bits;
-
-        // Case 1: identical value
         if (x == 0) {
             bw_write(bw, 0b0, 1);
             prev_bits = curr_bits;
@@ -193,7 +189,6 @@ inline void value_encode(BitWriter* bw, const vector<double>& values) {
         uint8_t lead = find_leading_zeroes(x);
         uint8_t trail = find_trailing_zeroes(x);
 
-        // Case 2: reuse previous block
         if (has_prev_block &&
             lead >= prev_lead &&
             trail >= prev_trail) {
@@ -209,7 +204,6 @@ inline void value_encode(BitWriter* bw, const vector<double>& values) {
             bw_write(bw, meaningful, n);
         }
 
-        // Case 3: new block
         else {
             bw_write(bw, 0b11, 2);
 
@@ -217,9 +211,6 @@ inline void value_encode(BitWriter* bw, const vector<double>& values) {
 
             uint8_t n =
                 64 - lead - trail;
-
-            // Gorilla convention:
-            // stored 0 means 64 meaningful bits
             uint8_t stored_n =
                 (n == 64) ? 0 : n;
 
@@ -246,8 +237,6 @@ inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
 
     if (N == 0)
         return vals;
-
-    // First value stored raw
     uint64_t prev_bits = br_read(br, 64);
 
     double v;
@@ -265,7 +254,6 @@ inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
 
     for (int i = 1; i < N; i++) {
 
-        // First control bit
         uint8_t ctrl = br_read(br, 1);
 
         // Case 0: identical value
@@ -276,10 +264,8 @@ inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
 
         uint64_t x = 0;
 
-        // Second control bit
         uint8_t second = br_read(br, 1);
 
-        // Case 10: reuse previous block
         if (second == 0) {
 
             uint8_t n =
@@ -290,7 +276,6 @@ inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
             x <<= prev_trail;
         }
 
-        // Case 11: new block
         else {
 
             uint8_t lead = br_read(br, 5);
@@ -298,8 +283,6 @@ inline vector<double> value_decode(BitReader* br, const uint16_t& N) {
             uint8_t stored_n =
                 br_read(br, 6);
 
-            // Gorilla convention:
-            // stored 0 means 64 bits
             uint8_t n =
                 (stored_n == 0)
                 ? 64
@@ -484,7 +467,6 @@ inline pair<vector<uint64_t>, vector<double>> chunk_file_reader(const string& me
             vector<uint64_t> timestamps =
                 timestamp_decode(&ts_br, count);
 
-            // ---------------- VALUE STREAM ----------------
             vector<uint8_t> val_buffer(val_len);
             for(uint32_t i =0;i<val_len;i++){
                 file.read(reinterpret_cast<char*>(&val_buffer[i]),sizeof(uint8_t));
@@ -495,11 +477,9 @@ inline pair<vector<uint64_t>, vector<double>> chunk_file_reader(const string& me
             vector<double> values =
                 value_decode(&val_br, count);
 
-            // ---------------- READ STORED CRC ----------------
             uint64_t stored_crc;
             file.read(reinterpret_cast<char*>(&stored_crc), 8);
 
-            // ---------------- FINALIZE CRC ----------------
             crc ^= 0xFFFFFFFFFFFFFFFF;
 
             if (stored_crc != crc) {
@@ -608,12 +588,10 @@ inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {
 
     BitReader br(buffer);
 
-    // ===== READ HEADER =====
     uint32_t original_size = br_read(&br, 64);
 
     const int window = 16;
 
-    // bootstrap first literals
     for (int i = 0; i < window && res.size() < original_size; i++) {
         res.push_back(br_read(&br, 8));
     }
