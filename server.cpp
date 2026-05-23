@@ -376,7 +376,7 @@ void retention_cleaner_thread() {
                     uint64_t last_ts = get_last_timestamp_from_chunk(path);
 
                     if (last_ts < horizon) {
-
+                        zstd_compress(path);
                         fs::remove(path);
 
                         cout

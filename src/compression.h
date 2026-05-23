@@ -563,8 +563,18 @@ inline void zstd_compress(const string& last_chunk){
     bw_flush(&bw);
 
     fs::path p(last_chunk);
-    string coarser_path = (p.parent_path() / "coarser" / p.filename()).string();
+    string coarser_path = (p.parent_path() / "coarser").string();
+    if(!fs::exists(coarser_path)){
+        fs::create_directories(coarser_path);
+    }
+    coarser_path = coarser_path + "/" + p.filename().string();
     ofstream fw(coarser_path, ios::binary);
+    if (!fw.is_open()) {
+        std::cerr << "Failed to open file: " << coarser_path << '\n';
+        std::cerr << "errno: " << errno << '\n';
+        std::cerr << "reason: " << std::strerror(errno) << '\n';
+        return;
+    }
     fw.write(reinterpret_cast<const char*>(bw.buffer.data()), bw.buffer.size());
 }
 inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {

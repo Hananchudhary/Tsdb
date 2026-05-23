@@ -9,6 +9,7 @@
 #include <string>
 #include<cstring>
 #include"compression.h"
+#include"../retention_config.h"
 using namespace std;
 
 ParseResult make_error(string message,const string& line) {
@@ -401,6 +402,21 @@ int PutCommand::handleRequest(HeadBlock& hb) const {
 
     return 0;
 }
+int metric_retention(const string& metric_name){
+    if(metric_name == "temperature") return temperature;
+    else if(metric_name == "temp") return temp;
+    else if(metric_name == "cpu") return cpu;
+    else if(metric_name == "cpu_usage") return cpu_usage;
+    else return 60 * 60 * 24 * 15;
+}
+string convertPath(const string& input) {
+    string target = "/coarser/";
+    size_t pos = input.find(target);
+
+    if (pos == string::npos) return input;
+
+    return input.substr(0, pos) + "/" + input.substr(pos + target.length());
+}
 pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) const{
     pair<vector<uint64_t>, vector<double>> res;
     pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
@@ -418,7 +434,19 @@ pair<vector<uint64_t>, vector<double>> GetCommand::handleRequest(HeadBlock& hb) 
 }
 pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) const{
     pair<vector<uint64_t>, vector<double>> res;
-    
+    bool has_to_delete = false;
+    vector<string> coarsers;
+    if(this->bucket_seconds > metric_retention(metric_name)){
+        string dirPath = "./data/" + this->metric_name + "/coarser";
+        coarsers = get_chunk_files(dirPath);
+        has_to_delete = true;
+        for(auto& path: coarsers){
+            vector<uint8_t> buff = zstd_decompress(path);
+            path = convertPath(path);
+            ofstream file(path, ios::binary);
+            file.write(reinterpret_cast<const char*>(buff.data()), buff.size());
+        }
+    }
     pair<vector<uint64_t>, vector<double>> chunks = chunk_file_reader(this->metric_name);
     chunks.first.insert(chunks.first.end(),hb.timestamps.begin(),hb.timestamps.end());
     chunks.second.insert(chunks.second.end(),hb.values.begin(),hb.values.end());
@@ -454,6 +482,11 @@ pair<vector<uint64_t>, vector<double>> AggCommand::handleRequest(HeadBlock& hb) 
             else{
                 res.first.pop_back();
             }
+        }
+    }
+    if(has_to_delete){
+        for(auto& path:coarsers){
+            fs::remove(path);
         }
     }
     return res;

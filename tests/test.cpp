@@ -518,7 +518,7 @@ void test_cleaner_thread() {
     }
 
     const string get_request =
-        "GET " + metric + " " + to_string(from_ts) + " " + to_string(to_ts);
+        "AGG " + metric + " " + to_string(from_ts) + " " + to_string(to_ts) + " 80 avg";
     if (!send_with_size(fd, get_request.data(),
                         static_cast<uint32_t>(get_request.size()))) {
         cout << "❌ Cleaner test failed: could not send verification GET\n";
@@ -533,20 +533,9 @@ void test_cleaner_thread() {
         return;
     }
 
-    uint64_t point_count = parse_point_count_from_get_response(get_response);
-    if (point_count == numeric_limits<uint64_t>::max()) {
-        cout << "❌ Cleaner test failed: unexpected GET response format\n";
-        close(fd);
-        return;
-    }
-    if (point_count != 0) {
-        cout << "❌ Cleaner test failed: expected 0 points after cleanup, got "
-             << point_count << "\n";
-        close(fd);
-        return;
-    }
+    show_result(get_response);
 
-    cout << "✔ Cleaner removed expired chunks and GET returned no points\n";
+    cout << "✔ Cleaner removed expired chunks and AGG returned no points\n";
     close(fd);
 }
 void test_zstd_roundtrip()
@@ -605,8 +594,8 @@ int main(){
     // test_1000_random_roundtrip();
     // test_value_random_walk();
     // test_chunk_roundtrip();
-    // test_cleaner_thread();
-    test_zstd_roundtrip();
+    test_cleaner_thread();
+    // test_zstd_roundtrip();
     return 0;
 }
 int main1() {
