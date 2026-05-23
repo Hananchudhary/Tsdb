@@ -105,12 +105,12 @@ struct ParseResult {
 };
 struct BitWriter {
     vector<uint8_t> buffer;
-    uint8_t current_byte = 0;
+    uint64_t current_byte = 0;
     uint8_t bits_filled = 0;
 };
 struct BitReader {
     vector<uint8_t> buffer;
-    uint16_t byte_index = 0;
+    uint64_t byte_index = 0;
     uint8_t bit_index = 0;
-    BitReader(const vector<uint8_t>& b, uint8_t bi = 0): buffer{b}, byte_index{bi}{}
+    BitReader(const vector<uint8_t>& b, uint64_t bi = 0): buffer{b}, byte_index{bi}{}
 };

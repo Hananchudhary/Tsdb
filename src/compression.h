@@ -59,8 +59,9 @@ inline void bw_flush(BitWriter* bw) {
         bw->bits_filled = 0;
     }
 }
-inline void print_buffer(const vector<uint8_t>& buf) {
-    for (auto b : buf) {
+inline void print_buffer(const vector<uint8_t>& buf, int by) {
+    for (int i = by;i < by + 2;i++) {
+        uint8_t b = buf[i];
         for (int i = 7; i >= 0; i--) {
             cout << ((b >> i) & 1);
         }
@@ -569,7 +570,6 @@ inline void zstd_compress(const string& last_chunk){
         if(max_len > 2){
             bw_write(&bw, 0b1, 1);
             bw_write(&bw, max_len, 6);
-            cout << to_string(i) << " " << to_string(max_offset) << " " << to_string(max_len) << endl;
             
             bw_write(&bw, max_offset, 6);
             i+=max_len;
@@ -581,6 +581,7 @@ inline void zstd_compress(const string& last_chunk){
         }
     }
     bw_flush(&bw);
+
     fs::path p(last_chunk);
     string coarser_path = (p.parent_path() / "coarser" / p.filename()).string();
     ofstream fw(coarser_path, ios::binary);
@@ -608,7 +609,7 @@ inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {
     BitReader br(buffer);
 
     // ===== READ HEADER =====
-    uint32_t original_size = br_read(&br, 32);
+    uint32_t original_size = br_read(&br, 64);
 
     const int window = 16;
 
@@ -619,11 +620,11 @@ inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {
 
     while (res.size() < original_size) {
         uint8_t flag = br_read(&br, 1);
-
         if (flag == 0) {
             uint8_t lit = br_read(&br, 8);
             res.push_back(lit);
-        } else {
+        } 
+        else {
             uint32_t len = br_read(&br, 6);
             uint32_t off = br_read(&br, 6);
 
