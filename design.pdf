@@ -1,0 +1,460 @@
+TSDB Design Document
+Time-Series Database Engine
+
+Overview
+
+This project implements a small time-series database (TSDB) in C++. The
+system accepts timestamped numeric measurements over TCP, stores recent data
+in memory, compresses flushed data into chunk files on disk, and supports
+range and aggregation queries. The design follows the project manual and the
+Gorilla paper ideas for timestamp and value compression.
+
+The implementation is organized around three main architectural layers:
+
+1. Network and command layer
+2. Storage and query layer
+3. Compression and chunk-format layer
+
+
+1. Architectural Layers
+
+1.1 Network and Command Layer
+
+Files:
+- server.cpp
+- client.cpp
+- src/Parser.cpp
+- src/Parser.h
+
+Responsibilities:
+- Accept TCP client connections
+- Read commands from clients
+- Parse commands into typed request structures
+- Dispatch requests to the storage engine
+- Serialize responses back to the client
+
+The server uses one thread per client. To avoid unlimited thread creation, a
+counting semaphore limits the maximum number of concurrent worker threads.
+Each client message is received using a length-prefixed socket protocol, then
+parsed by LineProtocolParser.
+
+Supported commands:
+- PUT metric timestamp value
+- GET metric from to
+- AGG metric from to bucket_seconds func
+- STATS metric
+- FLUSH metric
+- QUIT
+
+The parser validates:
+- command name
+- number of arguments
+- metric name format
+- timestamp format
+- double value format
+- aggregation function name
+
+The client is interactive and sends text commands, but server responses are
+sent in a compact custom binary/text mixed protocol. GET and AGG responses
+return a point count followed by timestamp/value pairs.
+
+
+1.2 Storage and Query Layer
+
+Files:
+- include/helpers.h
+- src/Parser.cpp
+- server.cpp
+
+Responsibilities:
+- Maintain the in-memory head block for each metric
+- Enforce monotonic inserts
+- Append incoming points to a WAL-like file before acknowledging PUT
+- Flush full or manually requested head blocks to chunk files
+- Read data from disk chunks and the current head block
+- Execute range scans, aggregations, and stats queries
+
+Each metric has a HeadBlock:
+- vector<uint64_t> timestamps
+- vector<double> values
+- capacity
+
+The head block stores recent points in uncompressed form. This keeps the hot
+ingestion path simple and fast. The current buffer size is controlled by
+memory_buffer in include/config.h.
+
+Metric registry:
+- The server keeps an unordered_map from metric name to HeadBlock.
+- On startup, the server scans ./data and registers all metric directories.
+- If a wal.bin file exists, its points are replayed into the head block.
+
+Write path:
+1. Parse PUT command.
+2. Find or create the metric head block.
+3. Reject out-of-order timestamps.
+4. Append timestamp and value to wal.bin.
+5. Append the point to the in-memory vectors.
+6. If the head block is full, flush it to a compressed chunk file.
+
+Read path for GET:
+1. Read all chunk files for the metric.
+2. Decompress timestamps and values from each chunk.
+3. Append current in-memory head block points.
+4. Filter by requested time range.
+5. Return matching points.
+
+Read path for AGG:
+1. Load matching points from disk and memory.
+2. Group points into time buckets.
+3. Apply the selected function:
+   avg, min, max, sum, or count
+4. Return one result per bucket.
+
+STATS returns:
+- metric name
+- total points
+- in-memory points
+- on-disk points
+- chunk count
+- first timestamp
+- last timestamp
+
+
+1.3 Compression and Chunk-Format Layer
+
+Files:
+- src/compression.h
+
+Responsibilities:
+- Bit-level writing and reading
+- Timestamp compression using delta-of-delta
+- Value compression using XOR encoding
+- Chunk file writing and reading
+- CRC verification
+
+This layer is the core of the project. It converts arrays of timestamps and
+double values into compact bitstreams and reconstructs them exactly during
+reads.
+
+
+2. Chunk File Format
+
+Each flushed head block becomes one chunk file:
+
+./data/<metric_name>/<first_timestamp>.chunk
+
+The implementation writes a temporary .tmp file first and then renames it to
+.chunk after completion.
+
+Layout of a chunk file:
+
+Offset  Size  Field
+0       4     magic = "TSDB"
+4       4     version = 2
+8       4     point_count
+12      8     first_timestamp
+20      8     last_timestamp
+28      4     ts_bitstream_len
+32      4     val_bitstream_len
+36      ...   timestamp bitstream
+...     ...   value bitstream
+...     8     crc64
+
+Field meanings:
+- magic identifies the file type
+- version allows future compatibility checks
+- point_count stores the number of points in the chunk
+- first_timestamp and last_timestamp describe the chunk range
+- ts_bitstream_len gives the byte length of the compressed timestamp stream
+- val_bitstream_len gives the byte length of the compressed value stream
+- crc64 protects the header and both bitstreams
+
+Read process:
+1. Open file
+2. Check magic
+3. Check version
+4. Read metadata
+5. Read both bitstreams
+6. Recompute CRC
+7. Reject the chunk if CRC does not match
+8. Decode timestamps and values
+
+
+3. Bitstream I/O Design
+
+The compression algorithms produce variable-length bit sequences, so normal
+byte-based writes are not enough.
+
+BitWriter state:
+- vector<uint8_t> buffer
+- current_byte
+- bits_filled
+
+BitReader state:
+- byte_index
+- bit_index
+- input buffer
+
+BitWriter behavior:
+- Appends the low n bits of a value to the stream
+- Packs bits from left to right inside bytes
+- Flushes a partially filled final byte when needed
+
+BitReader behavior:
+- Reads n bits from the current position
+- Advances bit and byte positions as bits are consumed
+- Reconstructs the original integer value
+
+This bit-level layer is used by both the timestamp encoder and the value
+encoder.
+
+
+4. Timestamp Compression: Delta-of-Delta Encoding
+
+Goal:
+- Compress monotonic timestamps efficiently when sampling intervals are
+  regular or nearly regular
+
+Encoding strategy:
+1. Store the first timestamp as a full 64-bit integer.
+2. Store the first delta in 14 bits.
+3. For later timestamps, compute:
+   delta_i     = t_i - t_(i-1)
+   D           = delta_i - delta_(i-1)
+4. Encode D using a variable-length prefix code.
+
+Prefix table used by the implementation:
+- D == 0                 -> write 0                     (1 bit)
+- -63   <= D <= 64       -> write 10 + 7-bit signed D  (9 bits total)
+- -255  <= D <= 256      -> write 110 + 9-bit signed D (12 bits total)
+- -2047 <= D <= 2048     -> write 1110 + 12-bit signed D
+- otherwise              -> write 1111 + 32-bit signed D
+
+Why this works:
+- In time-series data, timestamps often increase with a fixed interval.
+- If the interval remains constant, then D = 0 for almost every point.
+- That means most timestamps cost only 1 bit after the first two points.
+
+Worked example:
+
+Input timestamps:
+1000, 1010, 1020, 1030, 1045
+
+Step 1:
+- Store first timestamp 1000 in 64 bits
+
+Step 2:
+- First delta = 1010 - 1000 = 10
+- Store 10 in 14-bit signed form
+
+Step 3:
+- For 1020:
+  new delta = 1020 - 1010 = 10
+  D = 10 - 10 = 0
+  Encoded bits: 0
+
+- For 1030:
+  new delta = 1030 - 1020 = 10
+  D = 10 - 10 = 0
+  Encoded bits: 0
+
+- For 1045:
+  new delta = 1045 - 1030 = 15
+  D = 15 - 10 = 5
+  5 fits in [-63, 64]
+  Encoded bits: 10 + 7-bit signed(5)
+
+Representative bit layout:
+- t1: 64 bits
+- delta1: 14 bits
+- D for t3: 0
+- D for t4: 0
+- D for t5: 10 0000101
+
+This example shows why regular timestamps compress extremely well.
+
+
+5. Value Compression: XOR Encoding for Doubles
+
+Goal:
+- Compress sequences of double values that change slowly over time
+
+Encoding strategy:
+1. Store the first value as its raw 64-bit IEEE-754 bit pattern.
+2. For each later value:
+   X = bits(current_value) XOR bits(previous_value)
+3. Encode X using one of three cases.
+
+Cases:
+
+Case 1: identical value
+- If X == 0
+- Write 0
+- Cost: 1 bit
+
+Case 2: reuse previous zero window
+- If the new XOR fits within the previous meaningful bit window
+- Write 10
+- Then write only the meaningful bits
+
+Case 3: new zero window
+- Write 11
+- Write leading zero count in 5 bits
+- Write meaningful bit count in 6 bits
+- Write meaningful bits
+- Update previous leading/trailing zero state
+
+Why this works:
+- Consecutive doubles in metrics are usually very close
+- Their binary representations differ in only a small central region
+- Leading and trailing zero runs can be reused across many points
+
+Worked example:
+
+Suppose the values are:
+45.2, 45.2, 45.3
+
+Step 1:
+- Store bits(45.2) in 64 bits
+
+Step 2:
+- Compare next value 45.2 with previous 45.2
+- XOR is 0
+- Write: 0
+
+Step 3:
+- Compare 45.3 with 45.2
+- XOR is non-zero
+- Assume the XOR has:
+  leading zeros = 18
+  trailing zeros = 41
+  meaningful bits = 5
+- Because this is the first non-zero XOR, the encoder must send a new block
+- Write:
+  11
+  18 in 5 bits
+  5 in 6 bits
+  meaningful 5-bit payload
+
+Representative bit layout:
+- v1: 64 bits raw
+- v2: 0
+- v3: 11 + leading_zeros + meaningful_count + payload
+
+If several later values change in a similar way, the cheaper 10 branch can be
+used repeatedly.
+
+Decoder behavior:
+- Reconstruct the XOR block
+- Shift it back using trailing zeros
+- XOR it with previous value bits
+- Recover the exact original double value
+
+The implementation preserves exact bit patterns, which is important for
+special values such as NaN and infinity.
+
+
+6. Correctness and Supporting Features
+
+6.1 WAL-style durability for head blocks
+
+Before a point is accepted into the head block, it is appended to:
+
+./data/<metric_name>/wal.bin
+
+This helps recover recent unflushed points after restart. During startup, the
+server scans metric directories and replays the WAL contents into memory.
+
+6.2 CRC protection
+
+The chunk writer computes a CRC64 over:
+- header fields
+- timestamp bitstream
+- value bitstream
+
+The chunk reader recomputes the CRC and rejects files with mismatches.
+
+6.3 Retention and coarser storage
+
+The codebase also includes an extra retention-cleaner thread and a custom
+"coarser" compressed storage path for older chunks. This is beyond the core
+manual requirements and acts like an experimental extension toward retention
+policies and older-data compaction. The coarser copy is created when the 
+cleaner thread deletes an expired chunk.
+
+
+7. Benchmark Results
+
+Benchmark source:
+- benchmarks/benchmark.cpp
+
+Dataset:
+- 500,000 total points
+- 10 metrics
+- timestamps at regular 1-second intervals
+- values generated as a slowly drifting random walk
+
+Observed results from benchmarks/benchmark.log:
+- Total points: 500000
+- Number of metrics: 10
+- Insert time: 417.593 sec
+- Insert throughput: 1197 points/sec (read Performance note)
+- Flush time: 0.823 sec
+- Naive size: 8000000 bytes
+- TSDB compressed size: 893240 bytes
+- Compression ratio: 8.96x
+- Space reduction: 88.8%
+
+Interpretation:
+- The compression ratio is strong and matches the expectations from the
+  project manual.
+- Regular timestamps make delta-of-delta very effective because most
+  delta-of-delta values become zero.
+- Slowly drifting values make XOR encoding effective because most changes are
+  represented by small meaningful bit windows.
+- The measured ratio of 8.96x is close to the target of at least 8x and is
+  consistent with Gorilla-style compression on realistic synthetic metrics.
+
+Comparison with theoretical best case:
+- The manual suggests an ideal range around 11x to 12x for highly
+  compressible data.
+- This implementation reaches 8.96x, which is lower than the ideal best case
+  but still strong.
+- The gap is reasonable because the benchmark values are not perfectly
+  constant and therefore do not always hit the cheapest XOR cases.
+- Additional metadata, headers, CRC, and chunk boundaries also reduce the
+  final ratio slightly compared to the pure theoretical limit.
+
+Performance note:
+- Compression quality is good, but ingestion throughput is much lower than
+  the project target of 50,000 points/sec.
+- The current design performs WAL appends, parsing, command batching, locking,
+  and socket round-trips on the hot path, which likely explains the lower
+  throughput.
+
+
+8. Testing Strategy
+
+The test program in tests/test.cpp includes:
+- bitstream round-trip testing
+- timestamp encode/decode testing
+- value encode/decode testing
+- end-to-end chunk round-trip testing
+
+These tests are important because a single bit-packing mistake can corrupt all
+later decoded data. The design of the project depends on validating each layer
+in isolation before relying on full end-to-end behavior.
+
+
+9. Summary
+
+This TSDB follows the intended project architecture:
+- a network layer for receiving commands
+- a storage layer with per-metric head blocks and chunk flushing
+- a compression layer based on Gorilla timestamp and value encoding
+
+The system successfully stores time-series data in compressed chunk files and
+retrieves it through GET, AGG, STATS, and FLUSH operations. The strongest
+result of the implementation is its compression ratio, which is close to 9x
+on the benchmark workload. The main area that still needs improvement is
+write throughput.
