@@ -112,15 +112,20 @@ vector<DataPoint> generate_synthetic_data(int total_points, int num_metrics) {
         double current_value = (rng() % 20);
 
         for (int p = 0; p < points_per_metric; ++p) {
+            
             DataPoint dp;
             dp.metric_name = metric_names[m];
             dp.timestamp = 100 + p;  // 1-second intervals starting at 1000000
 
-            double drift = ((rng() % 21) - 10) / 1000000000000000.0;
+            double drift = 0;
+            if(p % 2 == 0)
+                drift = ((rng() % 21) - 10) / 100.0;
 
             current_value += drift;
             dp.value = current_value;
-
+            if((m == 0 && p == 0) || (m == (num_metrics - 1) && p == (points_per_metric - 1))){
+                cout << "val: " << current_value << endl;
+            }
             data.push_back(dp);
         }
     }

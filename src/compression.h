@@ -3,6 +3,7 @@
 #include<vector>
 #include<memory.h>
 #include"../include/helpers.h"
+#include"../retention_config.h"
 #include<fstream>
 #include<algorithm>
 #include<filesystem>
@@ -625,4 +626,11 @@ inline std::vector<uint8_t> zstd_decompress(const std::string& input_path) {
     }
 
     return res;
+}
+inline int metric_retention(const string& metric_name){
+    if(metric_name == "temperature") return temperature;
+    else if(metric_name == "temp") return temp;
+    else if(metric_name == "cpu") return cpu;
+    else if(metric_name == "cpu_usage") return cpu_usage;
+    else return 60 * 60 * 24 * 15;
 }

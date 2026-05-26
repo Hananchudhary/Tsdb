@@ -140,9 +140,8 @@ string get_result(const CommandData& command) {
     if (holds_alternative<PutCommand>(command)) {
         const PutCommand& put = get<PutCommand>(command);
         if(metric_registery.count(put.metric_name) == 0){
-            uint64_t timestamp = chrono::duration_cast<chrono::milliseconds>(
-                chrono::system_clock::now().time_since_epoch()
-            ).count();
+            uint64_t timestamp = static_cast<uint64_t>(time(nullptr));
+
             registery_time[put.metric_name] = timestamp;
             metric_registery[put.metric_name] = HeadBlock{};
         }
@@ -351,7 +350,6 @@ void retention_cleaner_thread() {
 
         this_thread::sleep_for(chrono::minutes(1));
 
-        uint64_t now = static_cast<uint64_t>(time(nullptr));
         lock_guard<mutex> lock(registry_mutex);
         
 
@@ -363,19 +361,18 @@ void retention_cleaner_thread() {
             if (!fs::exists(dirPath))
                 continue;
 
-            uint64_t horizon =
-                now - retention_seconds;
-
             vector<string> chunk_files =
                 get_chunk_files(dirPath);
 
             for (const auto& path : chunk_files) {
 
                 try {
+                    uint64_t now = static_cast<uint64_t>(time(nullptr));
 
                     uint64_t last_ts = get_last_timestamp_from_chunk(path);
 
-                    if (last_ts < horizon) {
+
+                    if ((now - last_ts) > metric_retention(metric_name)) {
                         zstd_compress(path);
                         fs::remove(path);
 
