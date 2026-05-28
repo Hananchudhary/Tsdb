@@ -20,7 +20,7 @@
 using namespace std;
 namespace fs = filesystem;
 
-// ── Network helpers (same as client.cpp) ──────────────────────────────
+
 ssize_t recv_all(int socket_fd, void* data, size_t length) {
     char* buffer = static_cast<char*>(data);
     size_t total_received = 0;
@@ -68,7 +68,7 @@ bool recv_with_size(int socket_fd, string& out) {
     return recv_all(socket_fd, out.data(), length) > 0;
 }
 
-// ── Connect to server ─────────────────────────────────────────────────
+
 int connect_to_server() {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -89,7 +89,7 @@ int connect_to_server() {
     return fd;
 }
 
-// ── Generate synthetic data ───────────────────────────────────────────
+
 struct DataPoint {
     string metric_name;
     uint64_t timestamp;
@@ -130,7 +130,7 @@ vector<DataPoint> generate_synthetic_data(int total_points, int num_metrics) {
         }
     }
 
-    // Interleave data from different metrics to simulate real-world usage
+  
     vector<DataPoint> interleaved;
     interleaved.reserve(total_points);
 
@@ -152,7 +152,7 @@ vector<DataPoint> generate_synthetic_data(int total_points, int num_metrics) {
     return interleaved;
 }
 
-// ── Calculate directory size ──────────────────────────────────────────
+
 uint64_t get_directory_size(const string& path) {
     uint64_t total_size = 0;
 
@@ -167,7 +167,7 @@ uint64_t get_directory_size(const string& path) {
     return total_size;
 }
 
-// ── Format bytes ──────────────────────────────────────────────────────
+
 string format_bytes(uint64_t bytes) {
     stringstream ss;
     if (bytes < 1024) {
@@ -182,7 +182,7 @@ string format_bytes(uint64_t bytes) {
     return ss.str();
 }
 
-// ── Main benchmark ────────────────────────────────────────────────────
+
 int main() {
     const int TOTAL_POINTS = 500000;
     const int NUM_METRICS = 10;
@@ -193,7 +193,7 @@ int main() {
     cout << "║           TSDB Benchmark Suite                          ║\n";
     cout << "╚══════════════════════════════════════════════════════════╝\n\n";
 
-    // ── Step 1: Generate synthetic data ───────────────────────────────
+   
     cout << "Generating " << TOTAL_POINTS << " data points across "
          << NUM_METRICS << " metrics...\n";
 
@@ -205,14 +205,14 @@ int main() {
     cout << "✓ Data generated in " << fixed << setprecision(3)
          << gen_time << " seconds\n\n";
 
-    // ── Step 2: Clean data directory ──────────────────────────────────
+ 
     cout << "Cleaning data directory...\n";
     if (fs::exists(DATA_DIR)) {
         fs::remove_all(DATA_DIR);
     }
     cout << "✓ Data directory cleaned\n\n";
 
-    // ── Step 3: Connect to server ─────────────────────────────────────
+   
     cout << "Connecting to TSDB server...\n";
     int fd = connect_to_server();
     if (fd < 0) {
@@ -221,12 +221,12 @@ int main() {
     }
     cout << "✓ Connected to server\n\n";
 
-    // ── Step 4: Insert all points ─────────────────────────────────────
+  
     cout << "Inserting " << TOTAL_POINTS << " points via PUT...\n";
 
     auto insert_start = chrono::high_resolution_clock::now();
 
-    // Build batch commands (100 commands per batch for efficiency)
+   
     const int BATCH_SIZE = 100;
     int points_sent = 0;
 
@@ -256,7 +256,7 @@ int main() {
 
         points_sent += batch_count;
 
-        // Progress indicator
+       
         if (points_sent % 50000 == 0) {
             cout << "  Progress: " << points_sent << "/" << TOTAL_POINTS
                  << " points (" << (points_sent * 100 / TOTAL_POINTS) << "%)\n";
@@ -272,7 +272,7 @@ int main() {
     cout << "  Throughput: " << fixed << setprecision(0)
          << points_per_second << " points/second\n\n";
 
-    // ── Step 5: Flush all metrics ─────────────────────────────────────
+    
     cout << "Flushing all metrics...\n";
 
     auto flush_start = chrono::high_resolution_clock::now();
@@ -299,7 +299,7 @@ int main() {
     cout << "✓ All metrics flushed in " << fixed << setprecision(3)
          << flush_time << " seconds\n\n";
 
-    // ── Step 6: Calculate disk usage ──────────────────────────────────
+   
     uint64_t disk_bytes = get_directory_size(DATA_DIR);
     cout << "Disk usage (TSDB compressed):\n";
     cout << "  Total: " << format_bytes(disk_bytes) << " ("
@@ -314,7 +314,7 @@ int main() {
     }
     cout << "\n";
 
-    // ── Step 7: Generate naive format file ────────────────────────────
+  
     cout << "Generating naive format file (16 bytes/point)...\n";
 
     uint64_t naive_bytes = TOTAL_POINTS * 16;  // 8 bytes timestamp + 8 bytes double
@@ -335,7 +335,7 @@ int main() {
     cout << "✓ Naive file created: " << format_bytes(naive_bytes)
          << " (" << naive_bytes << " bytes)\n\n";
 
-    // ── Step 8: Calculate compression ratio ───────────────────────────
+   
     double compression_ratio = static_cast<double>(naive_bytes) / disk_bytes;
 
     cout << "╔══════════════════════════════════════════════════════════╗\n";
@@ -368,7 +368,7 @@ int main() {
          << ((1.0 - disk_bytes / static_cast<double>(naive_bytes)) * 100) << "%" << setw(2) << " │\n";
     cout << "└───────────────────────────┴─────────────────────────────┘\n\n";
 
-    // ── Cleanup ───────────────────────────────────────────────────────
+   
     close(fd);
 
     cout << "Benchmark complete!\n";
